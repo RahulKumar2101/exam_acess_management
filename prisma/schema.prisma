@@ -1,5 +1,3 @@
-// prisma/schema.prisma
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -56,25 +54,33 @@ model Question {
 }
 
 // 4. EXAM ACCESS (Student Login Management)
-// ✅ Updated: Exam is optional, Student details optional
 model ExamAccess {
-  id           String    @id @default(uuid())
+  id              String    @id @default(uuid())
   
-  studentName  String?
-  studentEmail String?
+  // Student Info (Filled by Student during registration)
+  studentName     String?
+  studentEmail    String?
+  studentPhone    String?   
   
-  // Bulk Generation Fields
-  companyName  String?   
-  batchId      String?   
+  // ✅ Supervisor Info (Added for your form)
+  supervisorName  String?   
+  supervisorEmail String?   
+
+  // ✅ Score (Added for Report Card)
+  score           Int?      @default(0)
   
-  accessCode   String    @unique 
-  status       String    @default("ACTIVE") 
+  // Bulk Generation Fields (Admin Side)
+  companyName     String?   
+  batchId         String?   
   
-  sentAt       DateTime? 
-  submittedAt  DateTime? 
-  createdAt    DateTime  @default(now())
+  accessCode      String    @unique 
+  status          String    @default("ACTIVE") // ACTIVE, STARTED, COMPLETED
   
-  // ✅ Exam is now Optional (Nullable)
-  examId       String?
-  exam         Exam?     @relation(fields: [examId], references: [id], onDelete: SetNull)
+  sentAt          DateTime? 
+  submittedAt     DateTime? 
+  createdAt       DateTime  @default(now())
+  
+  // Relation to Exam 
+  examId          String?
+  exam            Exam?     @relation(fields: [examId], references: [id], onDelete: SetNull)
 }
