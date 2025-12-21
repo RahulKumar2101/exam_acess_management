@@ -237,7 +237,6 @@ export async function updateExam(examId: string, prevState: any, formData: FormD
 }
 
 // --- 10. FETCH DATA FOR ACCESS DASHBOARD (Grouped by Batch) ---
-// ✅ UPDATED: Filters out null batchIds to prevent key errors
 export async function getExamAccessDashboard() {
   try {
     const session = await auth();
@@ -248,23 +247,25 @@ export async function getExamAccessDashboard() {
       where: { status: 'ACTIVE' }
     });
 
-    // 2. Group by Batch ID
+    // 2. Group by Batch ID to get company stats
+    // We ignore the exam relation here since we removed it from the table
     const groupedBatches = await prisma.examAccess.groupBy({
       by: ['batchId', 'companyName', 'createdAt'],
       _count: {
         accessCode: true 
       },
       where: {
-        batchId: { not: null } // ✅ Important: Exclude null batch IDs
+        batchId: { not: null }
       },
       orderBy: {
         createdAt: 'desc'
       }
     });
 
-    // Map to cleaner structure
-    const batches = groupedBatches.map(b => ({
-      batchId: b.batchId as string, // Safe cast because of 'where' clause
+    // ✅ FIXED: Explicitly typed 'b' as any to satisfy TypeScript strict mode
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const batches = groupedBatches.map((b: any) => ({
+      batchId: b.batchId as string,
       companyName: b.companyName,
       createdAt: b.createdAt,
       count: b._count.accessCode
@@ -300,7 +301,7 @@ export async function getBatchCodesForDownload(batchId: string) {
   }
 }
 
-// --- 12. BULK GENERATE CODES ---
+// --- 12. BULK GENERATE CODES (No Exam, Custom Quantity) ---
 export async function generateBulkCodes(prevState: any, formData: FormData) {
   try {
     const session = await auth();
@@ -324,7 +325,7 @@ export async function generateBulkCodes(prevState: any, formData: FormData) {
         accessCode: code,
         batchId: batchId,
         status: 'ACTIVE',
-        examId: null,
+        examId: null, // ✅ No exam assigned
         studentName: null, 
         studentEmail: null
       });
@@ -387,7 +388,7 @@ export async function deleteBatch(batchId: string) {
   }
 }
 
-// --- 16. UPDATE BATCH ---
+// --- 16. UPDATE BATCH (Name Only) ---
 export async function updateBatch(batchId: string, prevState: any, formData: FormData) {
   try {
     const companyName = formData.get('companyName') as string;
