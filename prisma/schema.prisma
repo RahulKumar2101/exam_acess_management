@@ -1,0 +1,80 @@
+// prisma/schema.prisma
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// 1. ADMIN USER
+model User {
+  id        String   @id @default(uuid())
+  email     String   @unique
+  password  String
+  name      String?
+  role      String   @default("ADMIN")
+  createdAt DateTime @default(now())
+  
+  exams     Exam[]
+}
+
+// 2. THE EXAM (Question Bank)
+model Exam {
+  id          String   @id @default(uuid())
+  title       String
+  description String?
+  durationMin Int      @default(30)
+  language    String   @default("English") 
+  isActive    Boolean  @default(true)      
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  
+  createdBy   User     @relation(fields: [creatorId], references: [id])
+  creatorId   String
+  
+  questions   Question[]
+  
+  // Link to Student Access Codes
+  accessCodes ExamAccess[] 
+}
+
+// 3. QUESTIONS (MCQ)
+model Question {
+  id            String   @id @default(uuid())
+  text          String
+  
+  options       String[] 
+  
+  correctOption Int      // 0, 1, 2, or 3
+  marks         Int      @default(1)
+  
+  exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
+  examId        String
+}
+
+// 4. EXAM ACCESS (Student Login Management)
+// ✅ Updated: Exam is optional, Student details optional
+model ExamAccess {
+  id           String    @id @default(uuid())
+  
+  studentName  String?
+  studentEmail String?
+  
+  // Bulk Generation Fields
+  companyName  String?   
+  batchId      String?   
+  
+  accessCode   String    @unique 
+  status       String    @default("ACTIVE") 
+  
+  sentAt       DateTime? 
+  submittedAt  DateTime? 
+  createdAt    DateTime  @default(now())
+  
+  // ✅ Exam is now Optional (Nullable)
+  examId       String?
+  exam         Exam?     @relation(fields: [examId], references: [id], onDelete: SetNull)
+}
