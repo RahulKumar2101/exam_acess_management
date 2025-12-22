@@ -7,12 +7,10 @@ import { getExamResult, sendReportEmail } from '@/app/lib/student-actions';
 function ResultContent() {
   const searchParams = useSearchParams();
   const accessCode = searchParams.get('code');
-  
   const [result, setResult] = useState<any>(null);
   const [isEmailSent, setIsEmailSent] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  // 1. Fetch Result on Load
   useEffect(() => {
     if(!accessCode) return;
     async function fetchResult() {
@@ -24,7 +22,6 @@ function ResultContent() {
     fetchResult();
   }, [accessCode]);
 
-  // 2. Handle "Generate Report" Click
   const handleGenerateReport = () => {
       startTransition(async () => {
           const res = await sendReportEmail(accessCode!);
@@ -36,7 +33,7 @@ function ResultContent() {
       });
   };
 
-  if (!result) return <div className="h-screen flex items-center justify-center font-bold text-blue-600">Loading Result...</div>;
+  if (!result) return <div className="h-screen flex items-center justify-center font-bold text-gray-500">Generating Report...</div>;
 
   const isPass = result.status === 'Pass';
 
@@ -44,14 +41,13 @@ function ResultContent() {
     <div className="min-h-screen bg-gray-50 flex justify-center items-center p-6 font-sans">
        <div className="w-full max-w-5xl bg-white rounded-2xl shadow-xl flex flex-col md:flex-row overflow-hidden border border-gray-200">
           
-          {/* --- LEFT: VISUAL SUMMARY --- */}
+          {/* --- LEFT: QUESTION REVIEW LIST (Simulated) --- */}
           <div className="w-full md:w-1/2 p-8 bg-gray-50/50 border-r border-gray-100 flex flex-col">
-             <h2 className="text-xl font-bold text-gray-800 mb-6">Performance Summary</h2>
+             <h2 className="text-xl font-bold text-gray-800 mb-6">Question Analysis</h2>
              
-             {/* Scrollable list of Question Results (Visual Representation) */}
              <div className="flex-1 overflow-y-auto pr-2 max-h-[500px] custom-scrollbar space-y-3">
                 {Array.from({ length: result.totalQuestions }).map((_, i) => {
-                    // Visual Logic: Display green checks for the number of correct answers
+                    // Logic: Show Green for correct answers count, Red for the rest
                     const isCorrect = i < result.correctAnswers;
                     return (
                         <div key={i} className="flex justify-between items-center p-4 bg-white border border-gray-200 rounded-xl shadow-sm">
@@ -73,64 +69,64 @@ function ResultContent() {
              </div>
              
              <div className="mt-6 pt-4 border-t border-gray-200 text-sm text-gray-500 flex justify-between">
-                 <span>Total Questions: {result.totalQuestions}</span>
-                 <span>Your Score: {result.score}</span>
+                 <span>Total: {result.totalQuestions}</span>
+                 <span>Score: {result.score}</span>
              </div>
           </div>
 
-          {/* --- RIGHT: REPORT CARD & ACTION --- */}
+          {/* --- RIGHT: REPORT CARD & GENERATE BUTTON --- */}
           <div className="w-full md:w-1/2 p-8 flex flex-col justify-center items-center text-center bg-white">
              
              <div className="mb-8 w-full border-b border-gray-100 pb-6">
-                <h1 className="text-3xl font-extrabold text-gray-900">Exam Result</h1>
-                <p className="text-gray-500 text-sm mt-2">{result.examTitle}</p>
+                <h1 className="text-2xl font-bold text-gray-900">Exam Result</h1>
+                <p className="text-gray-500 text-sm mt-1">{result.examTitle}</p>
              </div>
 
-             <div className={`w-32 h-32 rounded-full flex items-center justify-center text-6xl mb-6 shadow-xl transition-all ${isPass ? 'bg-green-100 text-green-600 ring-8 ring-green-50' : 'bg-red-100 text-red-600 ring-8 ring-red-50'}`}>
+             <div className={`w-28 h-28 rounded-full flex items-center justify-center text-6xl mb-6 shadow-md ${isPass ? 'bg-green-100 text-green-600' : 'bg-red-100 text-red-600'}`}>
                 {isPass ? '🏆' : '⚠️'}
              </div>
 
-             <h1 className={`text-6xl font-black mb-2 tracking-tight ${isPass ? 'text-green-600' : 'text-red-600'}`}>
+             <h1 className={`text-5xl font-extrabold mb-2 tracking-tight ${isPass ? 'text-green-600' : 'text-red-600'}`}>
                 {result.status.toUpperCase()}
              </h1>
              
-             <p className="text-gray-500 text-lg mb-8 font-medium">
-                You scored <span className="font-bold text-gray-900">{result.score}</span> / <span className="font-bold text-gray-900">{result.totalQuestions}</span>
+             <p className="text-gray-500 text-lg mb-8">
+                You scored <span className="font-bold text-gray-900">{result.score}</span> out of <span className="font-bold text-gray-900">{result.totalQuestions}</span>
              </p>
 
              {/* GENERATE REPORT BUTTON */}
              {isEmailSent ? (
-                 <div className="w-full bg-green-50 border border-green-200 text-green-700 p-6 rounded-2xl flex flex-col items-center animate-fade-in shadow-inner">
-                     <span className="text-3xl mb-2">📩</span>
-                     <p className="font-bold text-lg">Report Sent!</p>
-                     <p className="text-sm mt-1 opacity-80">Check your email for the detailed breakdown.</p>
+                 <div className="w-full bg-green-50 border border-green-200 text-green-700 p-4 rounded-xl flex flex-col items-center animate-fade-in">
+                     <span className="text-2xl mb-2">📩</span>
+                     <p className="font-bold">Report Sent Successfully!</p>
+                     <p className="text-xs mt-1 opacity-80">Check your email (and spam folder).</p>
                  </div>
              ) : (
                  <button 
                     onClick={handleGenerateReport} 
                     disabled={isPending}
-                    className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 hover:shadow-xl hover:-translate-y-1 transition-all shadow-md flex items-center justify-center gap-3 disabled:opacity-70 disabled:cursor-not-allowed disabled:transform-none"
+                    className="w-full py-4 bg-blue-600 text-white rounded-xl font-bold text-lg hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 flex items-center justify-center gap-2 disabled:opacity-70 disabled:cursor-not-allowed"
                  >
                     {isPending ? (
                         <span>Sending Report...</span>
                     ) : (
                         <>
-                            <span className="text-2xl">📄</span>
-                            <span>Generate Detailed Report</span>
+                            <span className="text-xl">📄</span>
+                            <span>Generate Report</span>
                         </>
                     )}
                  </button>
              )}
              
              {!isEmailSent && (
-                 <p className="text-xs text-gray-400 mt-6 max-w-xs leading-relaxed">
-                    Clicking this will send a detailed PDF-style report to You, your Supervisor, and the Admin.
+                 <p className="text-xs text-gray-400 mt-4 max-w-xs leading-relaxed">
+                    Clicking this will send a detailed official report to You, your Supervisor, and the Admin.
                  </p>
              )}
 
-             {/* Footer Info */}
-             <div className="mt-auto w-full pt-8 text-xs text-gray-400 border-t border-gray-100 flex justify-between uppercase tracking-wider font-semibold">
-                 <span>{result.studentName}</span>
+             {/* Student Info Footer */}
+             <div className="mt-auto w-full pt-8 text-sm text-gray-400 border-t border-gray-100 flex justify-between">
+                 <span>Student: {result.studentName}</span>
                  <span>{new Date(result.submittedAt).toLocaleDateString()}</span>
              </div>
           </div>
@@ -142,7 +138,7 @@ function ResultContent() {
 
 export default function ResultPage() {
     return (
-        <Suspense fallback={<div className="h-screen flex items-center justify-center font-bold text-blue-600">Loading...</div>}>
+        <Suspense fallback={<div className="h-screen flex items-center justify-center font-bold text-blue-600">Loading Result...</div>}>
             <ResultContent />
         </Suspense>
     )

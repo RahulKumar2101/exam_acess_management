@@ -62,16 +62,12 @@ model ExamAccess {
   studentEmail    String?
   studentPhone    String?   
   
-  // ✅ Supervisor Info
+  // ✅ Supervisor Info (Added for your form)
   supervisorName  String?   
   supervisorEmail String?   
 
-  // ✅ Score & Results
+  // ✅ Score (Added for Report Card)
   score           Int?      @default(0)
-  
-  // ✅ NEW FIELD: Stores the student's selected answers
-  // Format: { "questionId": optionIndex } e.g. { "uuid-1": 0, "uuid-2": 3 }
-  answers         Json?     
   
   // Bulk Generation Fields (Admin Side)
   companyName     String?   
