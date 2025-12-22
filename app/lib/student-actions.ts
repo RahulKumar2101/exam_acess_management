@@ -4,283 +4,284 @@ import { prisma } from '@/app/lib/prisma';
 import nodemailer from 'nodemailer';
 import { getTranslation } from '@/app/lib/translator';
 
-// ✅ Helper: Delay function to prevent overwhelming the translation API
 const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
 
-// --- 1. SEND EMAIL NOTIFICATION ---
-export async function sendAdminNotification(formData: FormData) {
+/**
+ * Helper to create the Nodemailer transporter
+ */
+const createTransporter = () => {
+  return nodemailer.createTransport({
+    host: process.env.SMTP_HOST,
+    port: parseInt(process.env.SMTP_PORT || '465'),
+    secure: true,
+    auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+  });
+};
+
+// --- 1. SEND REGISTRATION EMAILS ---
+export async function sendRegistrationEmails(formData: FormData) {
   try {
-    const name = formData.get('fullName') as string;
-    const company = formData.get('companyName') as string;
-    const email = formData.get('email') as string;
-    const phone = formData.get('phone') as string;
-    
-    // Capture Supervisor Details
-    const supName = formData.get('supName') as string || 'N/A';
-    const supEmail = formData.get('supEmail') as string || 'N/A';
+    // Get values safely
+    const name = (formData.get('fullName') as string) || '';
+    const company = (formData.get('companyName') as string) || '';
+    const email = (formData.get('email') as string) || '';
+    const phone = (formData.get('phone') as string) || '';
+    const supName = (formData.get('supName') as string) || '';
+    const supEmail = (formData.get('supEmail') as string) || '';
 
-    const transporter = nodemailer.createTransport({
-      host: process.env.SMTP_HOST,
-      port: parseInt(process.env.SMTP_PORT || '465'),
-      secure: true, 
-      auth: {
-        user: process.env.SMTP_USER,
-        pass: process.env.SMTP_PASS,
-      },
-    });
+    const transporter = createTransporter();
+    const style = "font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px;";
 
-    await transporter.sendMail({
-      from: `"Exam Portal" <${process.env.SMTP_USER}>`, 
-      to: process.env.ADMIN_EMAIL, 
-      subject: `🔔 New Student Registration: ${name}`,
-      html: `
-        <div style="font-family: Arial, sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 10px;">
-          <h2 style="color: #2563eb;">New Student Registration</h2>
-          <p><strong>${name}</strong> has just filled out the registration form.</p>
-          <table style="width: 100%; border-collapse: collapse; margin-top: 15px;">
-            <tr><td style="padding: 8px; color: #666;">Company:</td><td style="padding: 8px; font-weight: bold;">${company}</td></tr>
-            <tr><td style="padding: 8px; color: #666;">Email:</td><td style="padding: 8px; font-weight: bold;">${email}</td></tr>
-            <tr><td style="padding: 8px; color: #666;">Phone:</td><td style="padding: 8px; font-weight: bold;">${phone}</td></tr>
-            <tr><td style="padding: 8px; color: #666;">Supervisor:</td><td style="padding: 8px; font-weight: bold;">${supName} (${supEmail})</td></tr>
-          </table>
-        </div>
-      `,
-    });
+    // 1. Email to ADMIN
+    if (process.env.ADMIN_EMAIL) {
+      await transporter.sendMail({
+        from: `"Exam Portal" <${process.env.SMTP_USER}>`,
+        to: process.env.ADMIN_EMAIL,
+        subject: `🔔 New Registration: ${name}`,
+        html: `<div style="${style}"><h2 style="color:#2563eb">New Registration</h2><p><strong>${name}</strong> (${company}) registered.</p><p>Phone: ${phone}</p><p>Supervisor: ${supName} (${supEmail})</p></div>`,
+      });
+    }
+
+    // 2. Email to STUDENT
+    if (email) {
+      await transporter.sendMail({
+        from: `"Exam Portal" <${process.env.SMTP_USER}>`,
+        to: email,
+        subject: `✅ Registration Successful - ${company}`,
+        html: `<div style="${style}"><h2 style="color:#16a34a">Registration Confirmed</h2><p>Hi ${name},</p><p>You have successfully registered for the <strong>${company}</strong> exam.</p><p>Please proceed to select your language and question bank.</p></div>`,
+      });
+    }
+
+    // 3. Email to SUPERVISOR
+    if (supEmail) {
+      await transporter.sendMail({
+        from: `"Exam Portal" <${process.env.SMTP_USER}>`,
+        to: supEmail,
+        subject: `📢 Student Registered: ${name}`,
+        html: `
+              <div style="${style}">
+                <h2 style="color:#ca8a04">Student Registration Alert</h2>
+                <p>Hello <strong>${supName}</strong>,</p>
+                <p>Your student, <strong>${name}</strong> (${email}), has just registered for the exam under <strong>${company}</strong>.</p>
+                <p style="font-size:12px; color:#666; margin-top:20px;">Please ensure they have the correct Access Code to proceed.</p>
+              </div>
+            `,
+      });
+    }
 
     return { success: true };
   } catch (error) {
-    return { success: true }; 
+    console.error("Email Error:", error);
+    // Return success true to allow the UI to proceed even if email fails
+    return { success: true };
   }
 }
 
-// --- 2. VALIDATE & REGISTER ---
-export async function validateAndRegisterStudent(formData: FormData) {
+// --- 2. VERIFY CODE & START EXAM ---
+export async function verifyAndStartExam(formData: FormData) {
   try {
-    const code = formData.get('accessCode') as string;
-    const name = formData.get('fullName') as string;
-    const inputCompanyName = formData.get('companyName') as string;
-    const email = formData.get('email') as string;
-    const phone = formData.get('phone') as string;
-    const supName = formData.get('supName') as string;
-    const supEmail = formData.get('supEmail') as string;
+    const code = (formData.get('accessCode') as string) || '';
+    const examId = (formData.get('examId') as string) || '';
 
-    const accessRecord = await prisma.examAccess.findUnique({
-      where: { accessCode: code },
-    });
+    const name = (formData.get('fullName') as string) || '';
+    const email = (formData.get('email') as string) || '';
+    const phone = (formData.get('phone') as string) || '';
+    const supName = (formData.get('supName') as string) || '';
+    const supEmail = (formData.get('supEmail') as string) || '';
+    const inputCompany = (formData.get('companyName') as string) || '';
 
-    if (!accessRecord) {
-      return { success: false, message: 'Invalid Access Code.' };
-    }
-    
-    // ✅ BLOCK LOGIC: Return 'isCompleted' flag
-    if (accessRecord.status === 'COMPLETED') {
-        return { success: false, isCompleted: true, message: 'This exam has already been completed.' };
-    }
+    const accessRecord = await prisma.examAccess.findUnique({ where: { accessCode: code } });
 
-    if (accessRecord.status !== 'ACTIVE' && accessRecord.status !== 'STARTED') {
-      return { success: false, message: 'This code has expired.' };
-    }
+    if (!accessRecord) return { success: false, message: 'Invalid Access Code.' };
+    if (accessRecord.status === 'COMPLETED') return { success: false, isCompleted: true, message: 'Exam already completed.' };
 
-    const dbCompany = accessRecord.companyName?.trim().toLowerCase();
-    const userCompany = inputCompanyName?.trim().toLowerCase();
-
-    if (dbCompany !== userCompany) {
-      return { success: false, message: `Access code mismatch.` };
+    if (accessRecord.companyName?.trim().toLowerCase() !== inputCompany?.trim().toLowerCase()) {
+      return { success: false, message: `Code does not belong to ${inputCompany}.` };
     }
 
     await prisma.examAccess.update({
       where: { id: accessRecord.id },
       data: {
-        studentName: name,
-        studentEmail: email,
-        studentPhone: phone,
-        supervisorName: supName,
-        supervisorEmail: supEmail,
-        status: 'STARTED', 
-        sentAt: new Date()
+        studentName: name, studentEmail: email, studentPhone: phone,
+        supervisorName: supName, supervisorEmail: supEmail,
+        examId: examId, status: 'STARTED', sentAt: new Date()
       }
     });
 
     return { success: true };
-
   } catch (error) {
-    return { success: false, message: 'An unexpected error occurred.' };
+    return { success: false, message: 'Verification failed.' };
   }
 }
 
-// --- 3. GET ALL AVAILABLE EXAMS ---
+// --- 3. GET EXAMS ---
 export async function getAvailableExams() {
   try {
     const exams = await prisma.exam.findMany({
-      where: { isActive: true }, 
-      select: {
-        id: true, title: true, durationMin: true, language: true,
-        _count: { select: { questions: true } }
-      }
+      where: { isActive: true },
+      select: { id: true, title: true, durationMin: true, language: true, _count: { select: { questions: true } } }
     });
     return { success: true, exams };
-  } catch (error) {
-    return { success: false, exams: [] };
-  }
+  } catch (error) { return { success: false, exams: [] }; }
 }
 
-// --- 4. FETCH EXAM CONTENT ---
+// --- 4. FETCH CONTENT ---
 export async function fetchExamContent(accessCode: string, specificExamId?: string, targetLang?: string) {
   try {
     const record = await prisma.examAccess.findUnique({ where: { accessCode } });
-    if (!record) return { success: false, message: 'Access Code not found.' };
-
-    // ✅ BLOCK LOGIC: Check completion status
-    if (record.status === 'COMPLETED') {
-        return { success: false, isCompleted: true, message: 'Exam already completed.' };
-    }
+    if (!record) return { success: false, message: 'Invalid Code' };
+    if (record.status === 'COMPLETED') return { success: false, isCompleted: true };
 
     const examIdToLoad = specificExamId || record.examId;
-    if (!examIdToLoad) return { success: false, message: 'No Question Bank Selected.' };
+    if (!examIdToLoad) return { success: false, message: 'No Exam Selected' };
 
     const examData = await prisma.exam.findUnique({
-        where: { id: examIdToLoad },
-        select: {
-            id: true, title: true, durationMin: true, language: true,
-            questions: { select: { id: true, text: true, options: true, marks: true } }
-        }
+      where: { id: examIdToLoad },
+      select: { id: true, title: true, durationMin: true, language: true, questions: { select: { id: true, text: true, options: true, marks: true } } }
     });
 
-    if (!examData) return { success: false, message: 'Exam data not found.' };
+    if (!examData) return { success: false, message: 'Exam Data Missing' };
 
-    // ✅ ROBUST SEQUENTIAL TRANSLATION
     let processedQuestions: any[] = [];
     const originalQuestions = examData.questions;
 
     if (targetLang && targetLang !== 'English') {
-        for (const q of originalQuestions) {
-            try {
-                // Add delay to ensure stability
-                await delay(200);
+      for (const q of originalQuestions) {
+        try {
+          await delay(200); // Rate limiting buffer
+          const transText = await getTranslation(q.text, targetLang);
+          const transOptions: string[] = [];
+          let valid = true;
+          for (const opt of q.options) {
+            const t = await getTranslation(opt, targetLang);
+            if (!t) { valid = false; break; }
+            transOptions.push(t);
+          }
+          processedQuestions.push({ ...q, text: q.text, options: q.options, translatedText: transText || undefined, translatedOptions: valid ? transOptions : undefined });
+        } catch (e) { processedQuestions.push(q); }
+      }
+    } else { processedQuestions = originalQuestions; }
 
-                // 1. Translate Question Text
-                const transText = await getTranslation(q.text, targetLang);
-                
-                // 2. Translate Options
-                const transOptions: string[] = [];
-                let optionsValid = true;
-                
-                for (const opt of q.options) {
-                    const tOpt = await getTranslation(opt, targetLang);
-                    if (!tOpt) { optionsValid = false; break; }
-                    transOptions.push(tOpt);
-                }
-
-                processedQuestions.push({
-                    ...q,
-                    text: q.text, // Keep English
-                    options: q.options, // Keep English
-                    translatedText: transText || undefined,
-                    translatedOptions: optionsValid ? transOptions : undefined
-                });
-
-            } catch (err) {
-                // Fallback to original on failure
-                processedQuestions.push(q);
-            }
-        }
-    } else {
-        processedQuestions = originalQuestions;
-    }
-
-    return { 
-      success: true, 
-      exam: { ...examData, questions: processedQuestions } 
-    };
-
-  } catch (error) {
-    return { success: false, message: 'Failed to load exam.' };
-  }
+    return { success: true, exam: { ...examData, questions: processedQuestions } };
+  } catch (error) { return { success: false, message: 'Load Failed' }; }
 }
 
 // --- 5. SUBMIT EXAM ---
 export async function submitExam(accessCode: string, answers: Record<string, number>, examId: string) {
   try {
-    const accessRecord = await prisma.examAccess.findUnique({ where: { accessCode } });
-    if (!accessRecord) return { success: false };
-
+    const record = await prisma.examAccess.findUnique({ where: { accessCode } });
     const exam = await prisma.exam.findUnique({ where: { id: examId }, include: { questions: true } });
-    if (!exam) return { success: false };
+    if (!record || !exam) return { success: false };
 
-    let score = 0;
-    let totalMarks = 0;
-    let correctCount = 0;
-    let wrongCount = 0;
-
-    exam.questions.forEach((q) => {
-        totalMarks += q.marks;
-        if (answers[q.id] === q.correctOption) {
-            score += q.marks;
-            correctCount++;
-        } else {
-            wrongCount++;
-        }
+    let score = 0, totalMarks = 0;
+    exam.questions.forEach(q => {
+      totalMarks += q.marks;
+      // Ensure strict equality checks for option index
+      if (answers[q.id] === q.correctOption) score += q.marks;
     });
 
-    // Save Score & Mark as COMPLETED
     await prisma.examAccess.update({
-        where: { id: accessRecord.id },
-        data: {
-            status: 'COMPLETED',
-            submittedAt: new Date(),
-            score: score, 
-            examId: examId 
-        }
+      where: { id: record.id },
+      data: { status: 'COMPLETED', submittedAt: new Date(), score, examId }
     });
 
-    return { success: true, score, totalMarks, correctCount, wrongCount };
-
-  } catch (error) {
-    return { success: false };
-  }
+    return { success: true, score, totalMarks };
+  } catch (error) { return { success: false }; }
 }
 
-// --- 6. GET EXAM RESULT ---
+// --- 6. GET RESULT ---
 export async function getExamResult(accessCode: string) {
-    try {
-        const record = await prisma.examAccess.findUnique({
-            where: { accessCode },
-            include: { exam: true }
-        });
-
-        if (!record || record.status !== 'COMPLETED' || !record.exam) {
-            return { success: false };
+  try {
+    const record = await prisma.examAccess.findUnique({
+      where: { accessCode },
+      include: {
+        exam: {
+          include: { questions: true } // Include questions to calculate TOTAL MARKS
         }
+      }
+    });
 
-        const totalQuestions = await prisma.question.count({
-            where: { examId: record.examId! }
-        });
-        
-        // Calculate stats
-        const score = record.score || 0;
-        const correctAnswers = score; // Assuming 1 mark/question
-        const wrongAnswers = totalQuestions - correctAnswers;
-        
-        const isPass = score >= (totalQuestions * 0.4); 
+    if (!record || record.status !== 'COMPLETED' || !record.exam) return { success: false };
 
-        return { 
-            success: true,
-            data: {
-                studentName: record.studentName,
-                studentEmail: record.studentEmail,
-                studentPhone: record.studentPhone,
-                supervisorName: record.supervisorName,
-                supervisorEmail: record.supervisorEmail,
-                examTitle: record.exam.title,
-                submittedAt: record.submittedAt,
-                score: score,
-                totalQuestions: totalQuestions,
-                correctAnswers: correctAnswers, // ✅
-                wrongAnswers: wrongAnswers,     // ✅
-                status: isPass ? 'Pass' : 'Fail'
-            }
-        };
-    } catch (error) {
-        return { success: false };
+    const questions = record.exam.questions;
+    const totalQuestions = questions.length;
+    
+    // Calculate Total Possible Marks (Sum of all question marks)
+    const totalMaxMarks = questions.reduce((sum, q) => sum + q.marks, 0);
+    
+    const score = record.score || 0;
+
+    // NOTE: Logic updated to check score vs Total Marks, not just Question Count
+    // Assuming 40% is the passing criteria
+    const passingScore = totalMaxMarks * 0.4;
+    const isPass = score >= passingScore;
+
+    // Approximate correct/wrong count based on marks (Logic assumes equal weight if calculating pure count, but this is a display stat)
+    // For pure "Right vs Wrong" count, we'd need to store user answers in DB. 
+    // Here we return the stats derived from score/total.
+    
+    return {
+      success: true,
+      data: {
+        studentName: record.studentName,
+        studentEmail: record.studentEmail,
+        supervisorName: record.supervisorName,
+        supervisorEmail: record.supervisorEmail,
+        examTitle: record.exam.title,
+        submittedAt: record.submittedAt,
+        score,
+        totalQuestions: totalMaxMarks, // Returning Total MARKS here for the UI display "Score: X / Y"
+        correctAnswers: score, // This is score-based representation
+        wrongAnswers: totalMaxMarks - score,
+        status: isPass ? 'Pass' : 'Fail'
+      }
+    };
+  } catch (e) { return { success: false }; }
+}
+
+// --- 7. SEND REPORT EMAIL ---
+export async function sendReportEmail(accessCode: string) {
+  try {
+    const res = await getExamResult(accessCode);
+    if (!res.success || !res.data) return { success: false };
+    const d = res.data;
+
+    const transporter = createTransporter();
+
+    const html = `
+            <div style="font-family:sans-serif;padding:30px;border:1px solid #ddd;border-radius:10px;max-width:600px;margin:auto;">
+                <h2 style="color:#2563eb;text-align:center;">Exam Report Card</h2>
+                <hr style="margin:20px 0;border:0;border-top:1px solid #eee;">
+                <p><strong>Student:</strong> ${d.studentName}</p>
+                <p><strong>Exam:</strong> ${d.examTitle}</p>
+                <div style="background:#f3f4f6;padding:15px;text-align:center;border-radius:8px;margin:20px 0;">
+                    <h1 style="color:${d.status === 'Pass' ? 'green' : 'red'};margin:0;">${d.status.toUpperCase()}</h1>
+                    <p>Score: ${d.score} / ${d.totalQuestions}</p>
+                </div>
+                <p style="text-align:center; color:#666; font-size:12px;">(Score calculated based on total weighted marks)</p>
+            </div>`;
+
+    // Filter out nulls to satisfy TypeScript
+    const recipients = [
+      d.studentEmail,
+      d.supervisorEmail,
+      process.env.ADMIN_EMAIL
+    ].filter((e): e is string => !!e && e.length > 0);
+
+    if (recipients.length > 0) {
+      await Promise.all(recipients.map(e =>
+        transporter.sendMail({
+          from: process.env.SMTP_USER,
+          to: e,
+          subject: `📄 Exam Result: ${d.studentName}`,
+          html
+        })
+      ));
     }
+
+    return { success: true };
+  } catch (e) {
+    console.error(e);
+    return { success: false };
+  }
 }

@@ -29,6 +29,7 @@ function ExamContent() {
   const [timeLeft, setTimeLeft] = useState(0); 
   const [isSubmitting, startTransition] = useTransition();
 
+  // 1. Load Exam Content
   useEffect(() => {
     if(!accessCode) return;
     
@@ -48,14 +49,14 @@ function ExamContent() {
             setTimeLeft(result.exam.durationMin * 60); 
         } else {
             alert(result.message || "Failed to load exam.");
-            router.push('/'); // Redirect to login on failure
+            router.push('/'); 
         }
         setLoading(false);
     }
     load();
   }, [accessCode, examId, lang, router]);
 
-  // Timer
+  // 2. Timer Logic
   useEffect(() => {
     if (!timeLeft || timeLeft <= 0) return;
     const timer = setInterval(() => {
@@ -81,7 +82,7 @@ function ExamContent() {
     setAnswers(prev => ({ ...prev, [qId]: optionIdx }));
   };
 
-  // ✅ SUBMIT & REDIRECT TO REPORT CARD
+  // 3. Submit Handler -> Redirect to Report Card
   const handleSubmit = async () => {
     if(!confirm("Are you sure you want to finish the exam?")) return;
     if (!examId) { alert("Error: Exam ID missing."); return; }
@@ -117,7 +118,7 @@ function ExamContent() {
           </div>
        </div>
 
-       {/* Question Card */}
+       {/* Main Question Card */}
        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-4xl overflow-hidden flex flex-col min-h-[500px]">
           
           <div className="p-6 border-b border-gray-100 flex justify-between items-center">
@@ -126,12 +127,12 @@ function ExamContent() {
           </div>
 
           <div className="p-8 flex-1">
-             {/* 1. ENGLISH QUESTION (Always Top) */}
+             {/* English Question */}
              <h2 className="text-xl font-bold text-gray-900 leading-snug">
                 {currentQ.text}
              </h2>
 
-             {/* 2. TRANSLATED QUESTION (Below in Blue/Italic) */}
+             {/* Translated Question */}
              {currentQ.translatedText && (
                 <h3 className="text-lg font-medium text-blue-700 mt-3 italic border-l-4 border-blue-200 pl-3">
                    {currentQ.translatedText}
@@ -157,12 +158,10 @@ function ExamContent() {
                           </div>
                           
                           <div className="flex flex-col w-full">
-                              {/* English Option */}
                               <span className={`font-medium ${answers[currentQ.id] === idx ? 'text-blue-900' : 'text-gray-700'}`}>
                                  {opt}
                               </span>
                               
-                              {/* Translated Option */}
                               {currentQ.translatedOptions && currentQ.translatedOptions[idx] && (
                                   <span className="text-sm text-blue-600 italic mt-1">
                                      {currentQ.translatedOptions[idx]}
@@ -185,20 +184,38 @@ function ExamContent() {
                 Previous
              </button>
 
-             {/* Pagination Numbers */}
+             {/* ✅ UPDATED PAGINATION LOGIC (Green = Answered, Yellow = Skipped, Blue = Current) */}
              <div className="flex gap-2 overflow-x-auto max-w-[200px] no-scrollbar px-2">
-                {examData.questions.map((_:any, i: number) => (
-                    <button 
-                       key={i} 
-                       onClick={() => setCurrentQIndex(i)}
-                       className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-colors ${
-                          i === currentQIndex ? 'bg-blue-600 text-white' : 
-                          answers[examData.questions[i].id] !== undefined ? 'bg-blue-100 text-blue-600' : 'bg-gray-200 text-gray-500'
-                       }`}
-                    >
-                       {i + 1}
-                    </button>
-                ))}
+                {examData.questions.map((q, i) => {
+                    const isAnswered = answers[q.id] !== undefined;
+                    const isCurrent = i === currentQIndex;
+                    
+                    // Determine "Furthest Reached" to detect skips
+                    // A question is skipped if it's empty AND index is < max(currentIndex, anyAnsweredIndex)
+                    const answeredIndices = Object.keys(answers).map(k => examData.questions.findIndex(Eq => Eq.id === k));
+                    const maxReached = Math.max(currentQIndex, ...answeredIndices, 0);
+                    const isSkipped = !isAnswered && !isCurrent && i < maxReached;
+
+                    let btnClass = 'bg-gray-200 text-gray-500'; // Default
+                    
+                    if (isCurrent) {
+                        btnClass = 'bg-blue-600 text-white shadow-md shadow-blue-200 ring-2 ring-blue-100';
+                    } else if (isAnswered) {
+                        btnClass = 'bg-green-100 text-green-700 border border-green-200';
+                    } else if (isSkipped) {
+                        btnClass = 'bg-yellow-100 text-yellow-700 border border-yellow-200';
+                    }
+
+                    return (
+                        <button 
+                           key={i} 
+                           onClick={() => setCurrentQIndex(i)}
+                           className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-all ${btnClass}`}
+                        >
+                           {i + 1}
+                        </button>
+                    );
+                })}
              </div>
 
              {currentQIndex === examData.questions.length - 1 ? (
@@ -220,7 +237,7 @@ function ExamContent() {
           </div>
           <div>
              <h4 className="text-sm font-bold text-blue-900">Exam Status</h4>
-             <p className="text-sm text-blue-700">You have answered {Object.keys(answers).length} out of {examData.questions.length} questions. Make sure to answer all questions before submitting.</p>
+             <p className="text-sm text-blue-700">You have answered {Object.keys(answers).length} out of {examData.questions.length} questions.</p>
           </div>
        </div>
 
