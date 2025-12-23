@@ -185,7 +185,7 @@ export default function DashboardClient({
   // ✅ Handle Translations
   const handleGenerateTranslations = async () => {
     if (!activeExamId) return;
-    if (!confirm("This will translate all questions into Hindi & Spanish. It may take 1-2 minutes. Continue?")) return;
+    if (!confirm("This will auto-generate translations for 7 Indian languages (Hindi, Marathi, Bengali, Tamil, Telugu, Kannada, & Malayalam).")) return;
     
     setIsTranslating(true);
     try {

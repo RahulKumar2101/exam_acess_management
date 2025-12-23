@@ -1,16 +1,13 @@
 import { auth } from '@/auth';
-import { redirect } from 'next/navigation';
 import Link from 'next/link';
 
 export default async function Home() {
   const session = await auth();
+  const isAdmin = !!session?.user;
 
-  // 1. Convenience: If an Admin is already logged in, send them to Dashboard immediately.
-  if (session?.user) {
-    redirect('/admin/dashboard');
-  }
+  // ❌ REMOVED: The automatic redirect block.
+  // Now, an Admin can visit this page freely.
 
-  // 2. Otherwise, show the Landing Page (Selection Screen)
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex flex-col justify-center items-center p-6">
       
@@ -36,26 +33,33 @@ export default async function Home() {
           </p>
           <Link 
             href="/exam" 
-            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all active:scale-95"
+            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all active:scale-95 cursor-pointer"
           >
             Start Exam
           </Link>
         </div>
 
-        {/* OPTION 2: ADMIN LOGIN */}
+        {/* OPTION 2: ADMIN AREA (Dynamic) */}
         <div className="bg-white p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all border border-indigo-100 flex flex-col items-center text-center group">
           <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-4xl mb-6 group-hover:scale-110 transition-transform">
-            🛡️
+            {isAdmin ? '⚡' : '🛡️'}
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Admin Login</h2>
+          
+          <h2 className="text-2xl font-bold text-gray-900 mb-2">
+            {isAdmin ? 'Admin Dashboard' : 'Admin Login'}
+          </h2>
+          
           <p className="text-gray-500 mb-8">
-            Manage exams, generate codes, and view results.
+            {isAdmin 
+              ? 'Welcome back! Continue managing exams and results.' 
+              : 'Manage exams, generate codes, and view results.'}
           </p>
+          
           <Link 
-            href="/login" 
-            className="w-full bg-white text-indigo-600 border-2 border-indigo-100 py-4 rounded-xl font-bold text-lg hover:border-indigo-600 hover:bg-indigo-50 transition-all active:scale-95"
+            href={isAdmin ? "/admin/dashboard" : "/login"} 
+            className="w-full bg-white text-indigo-600 border-2 border-indigo-100 py-4 rounded-xl font-bold text-lg hover:border-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
           >
-            Login to Dashboard
+            {isAdmin ? 'Go to Dashboard →' : 'Login to Dashboard'}
           </Link>
         </div>
 
