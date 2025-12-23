@@ -160,7 +160,7 @@ export default function StudentExamPortal() {
                 </div>
             </div>
 
-            <button type="submit" disabled={isPending} className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold mt-6 hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30">
+            <button type="submit" disabled={isPending} className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold mt-6 hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 cursor-pointer">
                 {isPending ? 'Processing...' : 'Next'}
             </button>
           </form>
@@ -174,12 +174,12 @@ export default function StudentExamPortal() {
               
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 mt-6">
                  {['English', 'Hindi', 'Marathi', 'Bangla', 'Tamil', 'Telugu', 'Kannada', 'Malayalam'].map((lang) => (
-                    <button key={lang} onClick={() => handleLanguageSelect(lang)} className="p-3 rounded-xl border hover:border-blue-500 hover:bg-blue-50 font-semibold text-gray-700 text-sm transition-all">
+                    <button key={lang} onClick={() => handleLanguageSelect(lang)} className="p-3 rounded-xl border hover:border-blue-500 hover:bg-blue-50 font-semibold text-gray-700 text-sm transition-all cursor-pointer">
                         {lang}
                     </button>
                  ))}
               </div>
-              <button onClick={() => setStep(1)} className="text-gray-500 text-sm hover:underline">← Back to Registration</button>
+              <button onClick={() => setStep(1)} className="text-gray-500 text-sm hover:underline cursor-pointer">← Back to Registration</button>
            </div>
         )}
 
@@ -202,39 +202,39 @@ export default function StudentExamPortal() {
                             <h3 className="text-lg font-bold text-gray-900 mb-2 group-hover:text-blue-600 transition-colors">{exam.title}</h3>
                             <p className="text-sm text-gray-500 mb-4">{exam.durationMin} Minutes • {exam._count.questions} Questions</p>
                             
-                            <div className="mt-auto w-full bg-gray-50 text-gray-700 group-hover:bg-blue-600 group-hover:text-white py-3 rounded-xl font-bold text-center transition-all">
+                            <div className="mt-auto w-full bg-gray-50 text-gray-700 group-hover:bg-blue-600 group-hover:text-white py-3 rounded-xl font-bold text-center transition-all cursor-pointer">
                                 Select & Enter Code
                             </div>
                         </div>
                     ))}
                   </div>
               )}
-              <div className="mt-8"><button onClick={() => setStep(2)} className="text-gray-500 text-sm hover:underline">← Back to Language</button></div>
+              <div className="mt-8"><button onClick={() => setStep(2)} className="text-gray-500 text-sm hover:underline cursor-pointer">← Back to Language</button></div>
            </div>
         )}
 
         {/* --- STEP 4: ACCESS CODE ENTRY --- */}
         {step === 4 && (
           <div className="text-center space-y-6">
-             <div className="flex justify-center mb-4"><div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-3xl">🔒</div></div>
-             <h2 className="text-2xl font-bold text-gray-900">Enter Access Code</h2>
-             <p className="text-gray-500 text-sm">Enter the code provided by your supervisor to start.</p>
-             
-             {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium">{error}</div>}
-             
-             <input 
+              <div className="flex justify-center mb-4"><div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-3xl">🔒</div></div>
+              <h2 className="text-2xl font-bold text-gray-900">Enter Access Code</h2>
+              <p className="text-gray-500 text-sm">Enter the code provided by your supervisor to start.</p>
+              
+              {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm font-medium">{error}</div>}
+              
+              <input 
                 value={accessCode} 
                 onChange={(e) => setAccessCode(e.target.value.toUpperCase())} 
                 className="w-full px-4 py-4 bg-gray-50 border border-gray-200 rounded-xl text-center text-xl font-mono tracking-widest text-gray-900 uppercase focus:ring-2 focus:ring-blue-500 outline-none" 
                 placeholder="XYZ-12345" 
-             />
-             
-             <div className="space-y-3">
-                <button onClick={handleFinalStart} disabled={isPending} className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30">
+              />
+              
+              <div className="space-y-3">
+                <button onClick={handleFinalStart} disabled={isPending} className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 cursor-pointer">
                     {isPending ? 'Verifying...' : 'Start Exam'}
                 </button>
-                <button onClick={() => setStep(3)} className="text-sm text-gray-500 hover:text-gray-900 hover:underline">← Back to Selection</button>
-             </div>
+                <button onClick={() => setStep(3)} className="text-sm text-gray-500 hover:text-gray-900 hover:underline cursor-pointer">← Back to Selection</button>
+              </div>
           </div>
         )}
 

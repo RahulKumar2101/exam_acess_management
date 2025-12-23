@@ -16,7 +16,8 @@ import {
   deleteBatch, 
   updateBatch, 
   resetAccessCode,
-  markAsSent
+  markAsSent,
+  generateExamTranslations // ✅ Imported New Action
 } from '@/app/lib/actions'; 
 import { useActionState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -44,7 +45,8 @@ const Icons = {
   Key: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="m21 2-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0 3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>,
   Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
   Menu: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" x2="21" y1="6" y2="6"/><line x1="3" x2="21" y1="12" y2="12"/><line x1="3" x2="21" y1="18" y2="18"/></svg>,
-  Close: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>
+  Close: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>,
+  Translate: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
 };
 
 // Define Action State
@@ -81,6 +83,7 @@ export default function DashboardClient({
   const [isCreatingAccess, setIsCreatingAccess] = useState(false);
   const [editingBatch, setEditingBatch] = useState<BatchEntry | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
+  const [isTranslating, setIsTranslating] = useState(false); // ✅ State for loading translation
   
   // Mobile Menu State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
@@ -102,7 +105,7 @@ export default function DashboardClient({
        setBatchList(data.batches as unknown as BatchEntry[]);
        setAccessStats(data.stats);
     } catch {
-        // Suppress lint error
+       // Suppress lint error
     }
   }, []);
 
@@ -178,6 +181,25 @@ export default function DashboardClient({
     }
     setIsDownloading(false);
   }
+
+  // ✅ Handle Translations
+  const handleGenerateTranslations = async () => {
+    if (!activeExamId) return;
+    if (!confirm("This will translate all questions into Hindi & Spanish. It may take 1-2 minutes. Continue?")) return;
+    
+    setIsTranslating(true);
+    try {
+        const res = await generateExamTranslations(activeExamId);
+        if (res.success) {
+            alert("✅ Translations Generated Successfully!");
+        } else {
+            alert("❌ Error: " + res.message);
+        }
+    } catch (error) {
+        alert("Something went wrong.");
+    }
+    setIsTranslating(false);
+  };
 
   // --- VIEWS ---
 
@@ -269,7 +291,19 @@ export default function DashboardClient({
 
   const renderAddQuestions = () => (
     <div className="max-w-4xl mx-auto">
-      <button onClick={() => setCurrentView('Q_BANKS')} className="group text-sm text-gray-500 hover:text-gray-900 mb-6 flex items-center gap-2 font-medium transition-colors cursor-pointer"><span className="group-hover:-translate-x-1 transition-transform">←</span> Back to Question Banks</button>
+      <div className="flex justify-between items-center mb-6">
+          <button onClick={() => setCurrentView('Q_BANKS')} className="group text-sm text-gray-500 hover:text-gray-900 flex items-center gap-2 font-medium transition-colors cursor-pointer"><span className="group-hover:-translate-x-1 transition-transform">←</span> Back to Question Banks</button>
+          
+          {/* ✅ GENERATE TRANSLATION BUTTON */}
+          <button 
+            onClick={handleGenerateTranslations} 
+            disabled={isTranslating}
+            className="text-sm bg-purple-600 text-white px-4 py-2 rounded-lg hover:bg-purple-700 font-medium shadow-sm flex items-center gap-2 cursor-pointer disabled:opacity-50"
+          >
+             {isTranslating ? 'Translating...' : <><Icons.Translate /> Pre-generate Translations</>}
+          </button>
+      </div>
+
       <div className="space-y-8">
         <div className={`p-6 rounded-2xl shadow-sm border transition-all duration-300 ${editingQuestion ? 'bg-amber-50 border-amber-200 ring-4 ring-amber-50/50' : 'bg-white border-gray-200'}`}>
            <div className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 gap-2">
@@ -297,71 +331,69 @@ export default function DashboardClient({
     </div>
   );
 
-  // ✅ EXAM ACCESS VIEW
+  // ... (Keep renderExamAccess, SidebarItem, BulkGenerateForm, ExamForm, QuestionForm exactly as they were)
   const renderExamAccess = () => {
     return (
     <div className="space-y-8">
-         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-               <div><p className="text-gray-500 text-sm font-semibold">Total Companies</p><h3 className="text-3xl font-bold text-gray-900 mt-1">{accessStats.companies}</h3></div>
-               <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">🏢</div>
-            </div>
-            <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
-               <div><p className="text-gray-500 text-sm font-semibold">Active Codes</p><h3 className="text-3xl font-bold text-green-600 mt-1">{accessStats.activeCodes}</h3></div>
-               <div className="p-3 bg-green-50 text-green-600 rounded-xl"><Icons.Key /></div>
-            </div>
-         </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-6">
+             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                <div><p className="text-gray-500 text-sm font-semibold">Total Companies</p><h3 className="text-3xl font-bold text-gray-900 mt-1">{accessStats.companies}</h3></div>
+                <div className="p-3 bg-blue-50 text-blue-600 rounded-xl">🏢</div>
+             </div>
+             <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100 flex justify-between items-center">
+                <div><p className="text-gray-500 text-sm font-semibold">Active Codes</p><h3 className="text-3xl font-bold text-green-600 mt-1">{accessStats.activeCodes}</h3></div>
+                <div className="p-3 bg-green-50 text-green-600 rounded-xl"><Icons.Key /></div>
+             </div>
+          </div>
 
-         <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
-            <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-white gap-4">
-               <h3 className="text-lg font-bold text-gray-800">Company Batches</h3>
-               <button onClick={() => { setEditingBatch(null); setIsCreatingAccess(!isCreatingAccess); }} className="w-full md:w-auto text-sm bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 font-medium shadow-sm flex justify-center items-center gap-2 cursor-pointer transition-all"><span>{isCreatingAccess ? 'Cancel' : '+ Generate New Batch'}</span></button>
-            </div>
-            
-            {/* BULK GENERATE FORM */}
-            {isCreatingAccess && (
-               <div className="p-6 bg-gray-50 border-b border-gray-100">
-                  <h4 className="text-sm font-bold text-gray-900 mb-4">{editingBatch ? 'Edit Batch Details' : 'Generate New Access Codes'}</h4>
-                  <BulkGenerateForm 
-                     key={editingBatch ? editingBatch.batchId : 'new-batch'}
-                     initialData={editingBatch}
-                     onSuccess={() => { setIsCreatingAccess(false); fetchAccessData(); setEditingBatch(null); }}
-                     onCancel={() => { setIsCreatingAccess(false); setEditingBatch(null); }}
-                  />
-               </div>
-            )}
+          <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
+             <div className="p-6 border-b border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center bg-white gap-4">
+                <h3 className="text-lg font-bold text-gray-800">Company Batches</h3>
+                <button onClick={() => { setEditingBatch(null); setIsCreatingAccess(!isCreatingAccess); }} className="w-full md:w-auto text-sm bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 font-medium shadow-sm flex justify-center items-center gap-2 cursor-pointer transition-all"><span>{isCreatingAccess ? 'Cancel' : '+ Generate New Batch'}</span></button>
+             </div>
+             
+             {isCreatingAccess && (
+                <div className="p-6 bg-gray-50 border-b border-gray-100">
+                   <h4 className="text-sm font-bold text-gray-900 mb-4">{editingBatch ? 'Edit Batch Details' : 'Generate New Access Codes'}</h4>
+                   <BulkGenerateForm 
+                      key={editingBatch ? editingBatch.batchId : 'new-batch'}
+                      initialData={editingBatch}
+                      onSuccess={() => { setIsCreatingAccess(false); fetchAccessData(); setEditingBatch(null); }}
+                      onCancel={() => { setIsCreatingAccess(false); setEditingBatch(null); }}
+                   />
+                </div>
+             )}
 
-            {/* TABLE */}
-            <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm text-gray-600 min-w-[700px] md:min-w-full"> 
-                <thead className="bg-gray-50 text-gray-500 font-semibold uppercase tracking-wider text-xs">
-                    <tr>
-                    <th className="px-6 py-4">Company</th>
-                    <th className="px-6 py-4">Total Codes</th>
-                    <th className="px-6 py-4">Created Date</th>
-                    <th className="px-6 py-4 text-right">Actions</th>
-                    </tr>
-                </thead>
-                <tbody className="divide-y divide-gray-100">
-                    {batchList.map((batch) => (
-                    <tr key={batch.batchId} className="hover:bg-gray-50 transition-colors">
-                        <td className="px-6 py-4 font-bold text-gray-900 capitalize">{batch.companyName}</td>
-                        <td className="px-6 py-4"><span className="bg-gray-100 px-2 py-1 rounded text-gray-700 font-bold">{batch.count}</span></td>
-                        <td className="px-6 py-4 text-gray-500">{new Date(batch.createdAt).toLocaleDateString()}</td>
-                        <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
-                            <button onClick={() => handleEditBatch(batch)} className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded transition-colors cursor-pointer" title="Edit Batch"><Icons.Edit /></button>
-                            <button onClick={() => batch.batchId && handleDeleteBatch(batch.batchId)} className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition-colors cursor-pointer" title="Delete Batch"><Icons.Trash /></button>
-                            <button onClick={() => batch.batchId && handleDownloadBatch(batch.batchId, batch.companyName || 'Batch')} disabled={isDownloading} className="ml-2 text-emerald-600 hover:bg-emerald-50 p-2 rounded flex items-center gap-2 text-xs font-bold border border-emerald-100 transition-colors cursor-pointer whitespace-nowrap" title="Download Excel"><Icons.Download /> Download</button>
-                        </td>
-                    </tr>
-                    ))}
-                    {batchList.length === 0 && !isCreatingAccess && (
-                        <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400">No company batches found.</td></tr>
-                    )}
-                </tbody>
-                </table>
-            </div>
-         </div>
+             <div className="overflow-x-auto">
+                 <table className="w-full text-left text-sm text-gray-600 min-w-[700px] md:min-w-full"> 
+                 <thead className="bg-gray-50 text-gray-500 font-semibold uppercase tracking-wider text-xs">
+                     <tr>
+                     <th className="px-6 py-4">Company</th>
+                     <th className="px-6 py-4">Total Codes</th>
+                     <th className="px-6 py-4">Created Date</th>
+                     <th className="px-6 py-4 text-right">Actions</th>
+                     </tr>
+                 </thead>
+                 <tbody className="divide-y divide-gray-100">
+                     {batchList.map((batch) => (
+                     <tr key={batch.batchId} className="hover:bg-gray-50 transition-colors">
+                         <td className="px-6 py-4 font-bold text-gray-900 capitalize">{batch.companyName}</td>
+                         <td className="px-6 py-4"><span className="bg-gray-100 px-2 py-1 rounded text-gray-700 font-bold">{batch.count}</span></td>
+                         <td className="px-6 py-4 text-gray-500">{new Date(batch.createdAt).toLocaleDateString()}</td>
+                         <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
+                             <button onClick={() => handleEditBatch(batch)} className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded transition-colors cursor-pointer" title="Edit Batch"><Icons.Edit /></button>
+                             <button onClick={() => batch.batchId && handleDeleteBatch(batch.batchId)} className="text-gray-400 hover:text-red-600 p-2 hover:bg-red-50 rounded transition-colors cursor-pointer" title="Delete Batch"><Icons.Trash /></button>
+                             <button onClick={() => batch.batchId && handleDownloadBatch(batch.batchId, batch.companyName || 'Batch')} disabled={isDownloading} className="ml-2 text-emerald-600 hover:bg-emerald-50 p-2 rounded flex items-center gap-2 text-xs font-bold border border-emerald-100 transition-colors cursor-pointer whitespace-nowrap" title="Download Excel"><Icons.Download /> Download</button>
+                         </td>
+                     </tr>
+                     ))}
+                     {batchList.length === 0 && !isCreatingAccess && (
+                         <tr><td colSpan={4} className="px-6 py-8 text-center text-gray-400">No company batches found.</td></tr>
+                     )}
+                 </tbody>
+                 </table>
+             </div>
+          </div>
       </div>
     )
   }

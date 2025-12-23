@@ -4,6 +4,7 @@ import { signIn, auth, signOut } from '../../auth'
 import { AuthError } from 'next-auth'
 import { prisma } from '@/app/lib/prisma'
 import { revalidatePath } from 'next/cache'
+import { getTranslation } from '@/app/lib/translator'; 
 
 // Helper: Generate simple random string
 function generateAccessCode(length = 8): string {
@@ -248,7 +249,6 @@ export async function getExamAccessDashboard() {
     });
 
     // 2. Group by Batch ID to get company stats
-    // We ignore the exam relation here since we removed it from the table
     const groupedBatches = await prisma.examAccess.groupBy({
       by: ['batchId', 'companyName', 'createdAt'],
       _count: {
@@ -262,7 +262,6 @@ export async function getExamAccessDashboard() {
       }
     });
 
-    // ✅ FIXED: Explicitly typed 'b' as any to satisfy TypeScript strict mode
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const batches = groupedBatches.map((b: any) => ({
       batchId: b.batchId as string,
@@ -406,5 +405,75 @@ export async function updateBatch(batchId: string, prevState: any, formData: For
     return { message: 'Success' };
   } catch (error) {
     return { message: 'Failed to update batch.' };
+  }
+}
+
+// ✅ 17. GENERATE TRANSLATIONS (UPDATED FOR 7 INDIAN LANGUAGES)
+const TARGET_LANGUAGES = [
+  'Hindi', 
+  'Marathi', 
+  'Bengali', 
+  'Tamil', 
+  'Telugu', 
+  'Kannada', 
+  'Malayalam'
+];
+
+export async function generateExamTranslations(examId: string) {
+  try {
+    // 1. Get all questions for this exam
+    const exam = await prisma.exam.findUnique({
+      where: { id: examId },
+      include: { questions: true }
+    });
+
+    if (!exam || exam.questions.length === 0) {
+      return { success: false, message: "No questions found." };
+    }
+
+    // 2. Loop through every language
+    for (const lang of TARGET_LANGUAGES) {
+      // 3. Loop through every question
+      for (const q of exam.questions) {
+        
+        // Check if already exists to avoid re-doing work
+        const existing = await prisma.questionTranslation.findUnique({
+             where: { questionId_language: { questionId: q.id, language: lang } }
+        });
+
+        if (existing) continue; // Skip if done
+
+        // Translate Text
+        const transText = await getTranslation(q.text, lang);
+        
+        // Translate Options
+        const transOptions = [];
+        for (const opt of q.options) {
+            const t = await getTranslation(opt, lang);
+            transOptions.push(t || opt); 
+        }
+
+        // Save to DB
+        if (transText) {
+          await prisma.questionTranslation.create({
+            data: {
+              questionId: q.id,
+              language: lang,
+              text: transText,
+              options: transOptions
+            }
+          });
+        }
+        
+        // Small delay to prevent API rate limits
+        await new Promise(r => setTimeout(r, 200));
+      }
+    }
+
+    return { success: true, message: "Translations generated!" };
+
+  } catch (error) {
+    // Console log removed for production
+    return { success: false, message: "Failed to generate translations." };
   }
 }
