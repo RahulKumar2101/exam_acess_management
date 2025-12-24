@@ -17,7 +17,8 @@ import {
   updateBatch, 
   resetAccessCode,
   markAsSent,
-  generateExamTranslations // ✅ Imported New Action
+  generateExamTranslations,
+  getAllExams // ✅ 1. IMPORT THE NEW ACTION
 } from '@/app/lib/actions'; 
 import { useActionState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -74,6 +75,9 @@ export default function DashboardClient({
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [activeExamTitle, setActiveExamTitle] = useState<string>('');
   
+  // ✅ 2. ADD STATE FOR ALL EXAMS
+  const [allExams, setAllExams] = useState<Exam[]>(recentExams); 
+
   const [questionList, setQuestionList] = useState<Question[]>([]);
   const [editingQuestion, setEditingQuestion] = useState<Question | null>(null);
   const [editingExam, setEditingExam] = useState<Exam | null>(null);
@@ -83,12 +87,26 @@ export default function DashboardClient({
   const [isCreatingAccess, setIsCreatingAccess] = useState(false);
   const [editingBatch, setEditingBatch] = useState<BatchEntry | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [isTranslating, setIsTranslating] = useState(false); // ✅ State for loading translation
+  const [isTranslating, setIsTranslating] = useState(false);
   
   // Mobile Menu State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [isPending, startTransition] = useTransition();
+
+  // ✅ 3. FETCH ALL EXAMS WHEN SWITCHING TO Q_BANKS VIEW
+  useEffect(() => {
+    if (currentView === 'Q_BANKS') {
+      startTransition(async () => {
+        try {
+          const exams = await getAllExams();
+          setAllExams(exams);
+        } catch (error) {
+          console.error("Failed to fetch all exams", error);
+        }
+      });
+    }
+  }, [currentView]);
 
   const fetchQuestions = useCallback(async (examId: string) => {
     try {
@@ -131,6 +149,8 @@ export default function DashboardClient({
     if(!confirm('Delete this form?')) return;
     startTransition(async () => {
        await deleteExam(examId);
+       // Refresh local state immediately
+       setAllExams(prev => prev.filter(e => e.id !== examId));
        router.refresh();
     });
   };
@@ -182,7 +202,7 @@ export default function DashboardClient({
     setIsDownloading(false);
   }
 
-  // ✅ Handle Translations
+  // Handle Translations
   const handleGenerateTranslations = async () => {
     if (!activeExamId) return;
     if (!confirm("This will auto-generate translations for 7 Indian languages (Hindi, Marathi, Bengali, Tamil, Telugu, Kannada, & Malayalam).")) return;
@@ -258,6 +278,7 @@ export default function DashboardClient({
     </div>
   );
 
+  // ✅ 4. UPDATE Q_BANKS TO USE `allExams` INSTEAD OF `recentExams`
   const renderQBanks = () => (
     <div className="bg-white rounded-2xl shadow-sm border border-gray-100 overflow-hidden">
         <div className="p-6 border-b border-gray-100 flex justify-between items-center bg-white">
@@ -270,7 +291,8 @@ export default function DashboardClient({
               <tr><th className="px-6 py-4">Bank Name</th><th className="px-6 py-4">Language</th><th className="px-6 py-4">Duration</th><th className="px-6 py-4">Questions</th><th className="px-6 py-4 text-right">Actions</th></tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {recentExams.map((exam) => (
+              {/* Use allExams here */}
+              {allExams.map((exam) => (
                 <tr key={exam.id} className="hover:bg-gray-50 transition-colors">
                   <td className="px-6 py-4 font-medium text-gray-900">{exam.title}</td>
                   <td className="px-6 py-4">{exam.language}</td>
@@ -294,7 +316,6 @@ export default function DashboardClient({
       <div className="flex justify-between items-center mb-6">
           <button onClick={() => setCurrentView('Q_BANKS')} className="group text-sm text-gray-500 hover:text-gray-900 flex items-center gap-2 font-medium transition-colors cursor-pointer"><span className="group-hover:-translate-x-1 transition-transform">←</span> Back to Question Banks</button>
           
-          {/* ✅ GENERATE TRANSLATION BUTTON */}
           <button 
             onClick={handleGenerateTranslations} 
             disabled={isTranslating}
@@ -356,10 +377,10 @@ export default function DashboardClient({
                 <div className="p-6 bg-gray-50 border-b border-gray-100">
                    <h4 className="text-sm font-bold text-gray-900 mb-4">{editingBatch ? 'Edit Batch Details' : 'Generate New Access Codes'}</h4>
                    <BulkGenerateForm 
-                      key={editingBatch ? editingBatch.batchId : 'new-batch'}
-                      initialData={editingBatch}
-                      onSuccess={() => { setIsCreatingAccess(false); fetchAccessData(); setEditingBatch(null); }}
-                      onCancel={() => { setIsCreatingAccess(false); setEditingBatch(null); }}
+                     key={editingBatch ? editingBatch.batchId : 'new-batch'}
+                     initialData={editingBatch}
+                     onSuccess={() => { setIsCreatingAccess(false); fetchAccessData(); setEditingBatch(null); }}
+                     onCancel={() => { setIsCreatingAccess(false); setEditingBatch(null); }}
                    />
                 </div>
              )}

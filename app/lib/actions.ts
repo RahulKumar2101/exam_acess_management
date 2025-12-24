@@ -408,7 +408,7 @@ export async function updateBatch(batchId: string, prevState: any, formData: For
   }
 }
 
-// ✅ 17. GENERATE TRANSLATIONS (UPDATED FOR 7 INDIAN LANGUAGES)
+// --- 17. GENERATE TRANSLATIONS (UPDATED FOR 7 INDIAN LANGUAGES) ---
 const TARGET_LANGUAGES = [
   'Hindi', 
   'Marathi', 
@@ -438,7 +438,7 @@ export async function generateExamTranslations(examId: string) {
         
         // Check if already exists to avoid re-doing work
         const existing = await prisma.questionTranslation.findUnique({
-             where: { questionId_language: { questionId: q.id, language: lang } }
+            where: { questionId_language: { questionId: q.id, language: lang } }
         });
 
         if (existing) continue; // Skip if done
@@ -473,7 +473,30 @@ export async function generateExamTranslations(examId: string) {
     return { success: true, message: "Translations generated!" };
 
   } catch (error) {
-    // Console log removed for production
     return { success: false, message: "Failed to generate translations." };
+  }
+}
+
+// ✅ 18. FETCH ALL EXAMS (For Question Banks View) ---
+export async function getAllExams() {
+  try {
+    const exams = await prisma.exam.findMany({
+      orderBy: { createdAt: 'desc' },
+      select: {
+        id: true,
+        title: true,
+        durationMin: true,
+        createdAt: true,
+        isActive: true,
+        language: true,
+        _count: {
+          select: { questions: true }
+        }
+      }
+    });
+    return exams;
+  } catch (error) {
+    console.error("Error fetching all exams:", error);
+    return [];
   }
 }

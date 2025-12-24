@@ -23,8 +23,13 @@ function ExamContent() {
   
   const [loading, setLoading] = useState(true);
   const [examData, setExamData] = useState<{ title: string; durationMin: number; questions: Question[] } | null>(null);
+  
   const [currentQIndex, setCurrentQIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<string, number>>({}); 
+  
+  // ✅ NEW: Track visited questions to handle the "Red" logic
+  const [visited, setVisited] = useState<number[]>([0]); 
+
   const [timeLeft, setTimeLeft] = useState(0); 
   const [isSubmitting, startTransition] = useTransition();
   const timerRef = useRef<NodeJS.Timeout | null>(null);
@@ -45,7 +50,6 @@ function ExamContent() {
         if (result.success && result.exam) {
             // @ts-ignore
             setExamData(result.exam);
-            // Set timer based on database duration
             setTimeLeft(result.exam.durationMin * 60); 
         } else {
             alert(result.message || "Failed to load exam.");
@@ -56,14 +60,20 @@ function ExamContent() {
     load();
   }, [accessCode, examId, lang, router]);
 
-  // 2. Secure Timer Logic
+  // ✅ NEW: Update 'visited' array whenever current question changes
+  useEffect(() => {
+    if (!visited.includes(currentQIndex)) {
+        setVisited(prev => [...prev, currentQIndex]);
+    }
+  }, [currentQIndex]);
+
+  // 2. Timer Logic
   useEffect(() => {
     if (timeLeft === null || timeLeft <= 0) return;
 
     timerRef.current = setInterval(() => {
         setTimeLeft((prev) => {
             if (prev <= 1) {
-                // Time is up! Force submit immediately
                 if (timerRef.current) clearInterval(timerRef.current);
                 handleForceSubmit(); 
                 return 0;
@@ -87,7 +97,6 @@ function ExamContent() {
     setAnswers(prev => ({ ...prev, [qId]: optionIdx }));
   };
 
-  // Called automatically when timer hits 0
   const handleForceSubmit = () => {
       if (!examId) return;
       startTransition(async () => {
@@ -96,7 +105,6 @@ function ExamContent() {
       });
   };
 
-  // Called manually by user
   const handleSubmit = async () => {
     if(!confirm("Are you sure you want to finish the exam?")) return;
     if (!examId) { alert("Error: Exam ID missing."); return; }
@@ -120,7 +128,7 @@ function ExamContent() {
     <div className="min-h-screen bg-gray-50 p-4 md:p-8 flex flex-col items-center font-sans">
        
        {/* Header */}
-       <div className="w-full max-w-4xl flex justify-between items-center mb-6">
+       <div className="w-full max-w-5xl flex justify-between items-center mb-6">
           <div className="flex items-center gap-2">
              <span className="text-xl">🛡️</span>
              <h1 className="font-bold text-gray-800 text-lg">ExamPortal</h1>
@@ -130,115 +138,149 @@ function ExamContent() {
           </div>
        </div>
 
-       {/* Question Card */}
-       <div className="bg-white rounded-2xl shadow-sm border border-gray-200 w-full max-w-4xl overflow-hidden flex flex-col min-h-[500px]">
-          
-          <div className="p-6 border-b border-gray-100 flex justify-between items-center">
-             <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold uppercase">Question {currentQIndex + 1} of {examData.questions.length}</span>
-             <span className="text-blue-600 text-xs font-bold uppercase border border-blue-100 px-2 py-1 rounded">MCQ</span>
-          </div>
+       <div className="w-full max-w-5xl grid grid-cols-1 lg:grid-cols-4 gap-6">
+           
+           {/* LEFT COLUMN: Question Card */}
+           <div className="lg:col-span-3 flex flex-col">
+               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 overflow-hidden flex flex-col min-h-[500px]">
+                  
+                  <div className="p-6 border-b border-gray-100 flex justify-between items-center">
+                     <span className="px-3 py-1 bg-gray-100 text-gray-600 rounded-full text-xs font-bold uppercase">Question {currentQIndex + 1} of {examData.questions.length}</span>
+                     <span className="text-blue-600 text-xs font-bold uppercase border border-blue-100 px-2 py-1 rounded">MCQ</span>
+                  </div>
 
-          <div className="p-8 flex-1">
-             {/* English Question */}
-             <h2 className="text-xl font-bold text-gray-900 leading-snug">
-                {currentQ.text}
-             </h2>
+                  <div className="p-8 flex-1">
+                     <h2 className="text-xl font-bold text-gray-900 leading-snug">
+                        {currentQ.text}
+                     </h2>
 
-             {/* Translated Question */}
-             {currentQ.translatedText && (
-                <h3 className="text-lg font-medium text-blue-700 mt-3 italic border-l-4 border-blue-200 pl-3">
-                   {currentQ.translatedText}
-                </h3>
-             )}
+                     {currentQ.translatedText && (
+                        <h3 className="text-lg font-medium text-blue-700 mt-3 italic border-l-4 border-blue-200 pl-3">
+                           {currentQ.translatedText}
+                        </h3>
+                     )}
 
-             <div className="space-y-4 mt-8">
-                {currentQ.options.map((opt, idx) => (
-                   <div 
-                      key={idx}
-                      onClick={() => handleOptionSelect(currentQ.id, idx)}
-                      className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
-                         answers[currentQ.id] === idx 
-                         ? 'border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-500' 
-                         : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
-                      }`}
-                   >
-                      <div className="flex items-start gap-3">
-                          <div className={`w-5 h-5 mt-0.5 rounded-full border flex items-center justify-center shrink-0 ${
-                             answers[currentQ.id] === idx ? 'border-blue-600' : 'border-gray-400'
-                          }`}>
-                             {answers[currentQ.id] === idx && <div className="w-2.5 h-2.5 bg-blue-600 rounded-full" />}
-                          </div>
-                          
-                          <div className="flex flex-col w-full">
-                              <span className={`font-medium ${answers[currentQ.id] === idx ? 'text-blue-900' : 'text-gray-700'}`}>
-                                 {opt}
-                              </span>
-                              
-                              {currentQ.translatedOptions && currentQ.translatedOptions[idx] && (
-                                  <span className="text-sm text-blue-600 italic mt-1">
-                                     {currentQ.translatedOptions[idx]}
-                                  </span>
-                              )}
-                          </div>
-                      </div>
-                   </div>
-                ))}
-             </div>
-          </div>
+                     <div className="space-y-4 mt-8">
+                        {currentQ.options.map((opt, idx) => (
+                           <div 
+                              key={idx}
+                              onClick={() => handleOptionSelect(currentQ.id, idx)}
+                              className={`p-4 rounded-xl border transition-all cursor-pointer flex flex-col gap-1 ${
+                                 answers[currentQ.id] === idx 
+                                 ? 'border-blue-500 bg-blue-50 shadow-sm ring-1 ring-blue-500' 
+                                 : 'border-gray-200 hover:border-gray-300 hover:bg-gray-50'
+                              }`}
+                           >
+                              <div className="flex items-start gap-3">
+                                  <div className={`w-5 h-5 mt-0.5 rounded-full border flex items-center justify-center shrink-0 ${
+                                     answers[currentQ.id] === idx ? 'border-blue-600' : 'border-gray-400'
+                                  }`}>
+                                     {answers[currentQ.id] === idx && <div className="w-2.5 h-2.5 bg-blue-600 rounded-full" />}
+                                  </div>
+                                  
+                                  <div className="flex flex-col w-full">
+                                      <span className={`font-medium ${answers[currentQ.id] === idx ? 'text-blue-900' : 'text-gray-700'}`}>
+                                         {opt}
+                                      </span>
+                                      
+                                      {currentQ.translatedOptions && currentQ.translatedOptions[idx] && (
+                                          <span className="text-sm text-blue-600 italic mt-1">
+                                             {currentQ.translatedOptions[idx]}
+                                          </span>
+                                      )}
+                                  </div>
+                              </div>
+                           </div>
+                        ))}
+                     </div>
+                  </div>
 
-          {/* Navigation */}
-          <div className="p-6 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
-             <button 
-                onClick={() => setCurrentQIndex(prev => Math.max(0, prev - 1))}
-                disabled={currentQIndex === 0}
-                className="px-5 py-2.5 rounded-lg border border-gray-200 text-gray-600 font-semibold hover:bg-white disabled:opacity-50 cursor-pointer transition-colors"
-             >
-                Previous
-             </button>
+                  {/* Navigation Buttons (Prev/Next) */}
+                  <div className="p-6 border-t border-gray-100 flex justify-between items-center bg-gray-50/50">
+                     <button 
+                        onClick={() => setCurrentQIndex(prev => Math.max(0, prev - 1))}
+                        disabled={currentQIndex === 0}
+                        className="px-5 py-2.5 rounded-lg border border-gray-200 text-gray-600 font-semibold hover:bg-white disabled:opacity-50 cursor-pointer transition-colors"
+                     >
+                        Previous
+                     </button>
 
-             <div className="flex gap-2 overflow-x-auto max-w-[200px] no-scrollbar px-2">
-                {examData.questions.map((q, i) => {
-                   const isAnswered = answers[q.id] !== undefined;
-                   const isCurrent = i === currentQIndex;
+                     {currentQIndex === examData.questions.length - 1 ? (
+                         <button onClick={handleSubmit} disabled={isSubmitting} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/20 cursor-pointer transition-all active:scale-95">
+                            {isSubmitting ? 'Submitting...' : 'Submit Exam'}
+                         </button>
+                     ) : (
+                         <button onClick={() => setCurrentQIndex(prev => prev + 1)} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 cursor-pointer transition-all active:scale-95">
+                            Next
+                         </button>
+                     )}
+                  </div>
+               </div>
+           </div>
+
+           {/* RIGHT COLUMN: Question Palette */}
+           <div className="lg:col-span-1">
+               <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-5 sticky top-6">
+                   <h3 className="font-bold text-gray-800 mb-4 flex items-center justify-between">
+                       Question Palette
+                       <span className="text-xs font-normal text-gray-500 bg-gray-100 px-2 py-1 rounded">Total: {examData.questions.length}</span>
+                   </h3>
                    
-                   let btnClass = 'bg-gray-200 text-gray-500 hover:bg-gray-300'; 
-                   if (isCurrent) btnClass = 'bg-blue-600 text-white shadow-md ring-2 ring-blue-100';
-                   else if (isAnswered) btnClass = 'bg-green-100 text-green-700 border border-green-200';
+                   <div className="flex flex-wrap gap-2 max-h-[60vh] overflow-y-auto pr-1">
+                        {examData.questions.map((q, i) => {
+                           const isAnswered = answers[q.id] !== undefined;
+                           const isCurrent = i === currentQIndex;
+                           const isVisited = visited.includes(i); // Check if we have been here
+                           
+                           // ✅ UPDATED COLOR LOGIC
+                           // 1. Default: Not Visited (Gray)
+                           let btnClass = 'bg-gray-100 text-gray-600 border border-gray-200 hover:bg-gray-200'; 
+                           
+                           // 2. Visited but NOT Answered (Red)
+                           if (isVisited && !isAnswered) {
+                               btnClass = 'bg-red-50 text-red-600 border border-red-200 hover:bg-red-100';
+                           }
 
-                   return (
-                       <button 
-                          key={i} 
-                          onClick={() => setCurrentQIndex(i)}
-                          className={`w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold shrink-0 transition-all cursor-pointer ${btnClass}`}
-                       >
-                          {i + 1}
-                       </button>
-                   );
-                })}
-             </div>
+                           // 3. Answered (Green - Overrides Red)
+                           if (isAnswered) {
+                               btnClass = 'bg-green-100 text-green-700 border border-green-200 hover:bg-green-200';
+                           }
+                           
+                           // 4. Current (Blue - Overrides everything)
+                           if (isCurrent) {
+                               btnClass = 'bg-blue-600 text-white shadow-md ring-2 ring-blue-100 border-blue-600';
+                           }
 
-             {currentQIndex === examData.questions.length - 1 ? (
-                 <button onClick={handleSubmit} disabled={isSubmitting} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 shadow-lg shadow-blue-500/20 cursor-pointer transition-all active:scale-95">
-                    {isSubmitting ? 'Submitting...' : 'Submit Exam'}
-                 </button>
-             ) : (
-                 <button onClick={() => setCurrentQIndex(prev => prev + 1)} className="px-6 py-2.5 bg-blue-600 text-white rounded-lg font-bold hover:bg-blue-700 cursor-pointer transition-all active:scale-95">
-                    Next
-                 </button>
-             )}
-          </div>
+                           return (
+                               <button 
+                                  key={i} 
+                                  onClick={() => setCurrentQIndex(i)}
+                                  className={`w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold shrink-0 transition-all cursor-pointer ${btnClass}`}
+                               >
+                                  {i + 1}
+                               </button>
+                           );
+                        })}
+                   </div>
+
+                   <div className="mt-6 space-y-2 border-t border-gray-100 pt-4">
+                       <div className="flex items-center gap-2 text-xs text-gray-600">
+                           <div className="w-4 h-4 rounded bg-green-100 border border-green-200"></div> Answered
+                       </div>
+                       <div className="flex items-center gap-2 text-xs text-gray-600">
+                           <div className="w-4 h-4 rounded bg-red-50 border border-red-200"></div> Skipped / Not Answered
+                       </div>
+                       <div className="flex items-center gap-2 text-xs text-gray-600">
+                           <div className="w-4 h-4 rounded bg-gray-100 border border-gray-200"></div> Not Visited
+                       </div>
+                       <div className="flex items-center gap-2 text-xs text-gray-600">
+                           <div className="w-4 h-4 rounded bg-blue-600"></div> Current
+                       </div>
+                   </div>
+               </div>
+           </div>
+
        </div>
-
-       <div className="mt-6 w-full max-w-4xl bg-blue-50 border border-blue-100 rounded-xl p-4 flex items-start gap-3">
-          <div className="text-blue-600 mt-0.5">
-             <svg width="20" height="20" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path strokeLinecap="round" strokeLinejoin="round" d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-          </div>
-          <div>
-             <h4 className="text-sm font-bold text-blue-900">Exam Status</h4>
-             <p className="text-sm text-blue-700">You have answered {Object.keys(answers).length} out of {examData.questions.length} questions.</p>
-          </div>
-       </div>
-
     </div>
   );
 }

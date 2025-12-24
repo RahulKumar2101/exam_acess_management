@@ -5,8 +5,8 @@ import { sendRegistrationEmails, getAvailableExams, verifyAndStartExam } from '@
 import { useRouter } from 'next/navigation';
 
 export default function StudentExamPortal() {
-  // Steps: 1:Registration -> 2:Language -> 3:Question Bank -> 4:Access Code
-  const [step, setStep] = useState<1 | 2 | 3 | 4>(1);
+  // Steps: 1:Registration -> 2:Instructions -> 3:Language -> 4:Bank -> 5:Code
+  const [step, setStep] = useState<1 | 2 | 3 | 4 | 5>(1);
   
   const [formData, setFormData] = useState({
     fullName: '', 
@@ -26,12 +26,25 @@ export default function StudentExamPortal() {
   const [isPending, startTransition] = useTransition();
   const router = useRouter();
 
-  // Load exams on mount so they are ready for Step 3
+  // ✅ 1. FIXED: Robust Number Sorting
   useEffect(() => {
     getAvailableExams().then(res => { 
-        if(res.success) setAvailableExams(res.exams); 
+        if(res.success) {
+            const sortedExams = [...res.exams].sort((a: any, b: any) => {
+                const numA = parseInt(a.title.match(/\d+/)?.[0] || '9999'); 
+                const numB = parseInt(b.title.match(/\d+/)?.[0] || '9999');
+                if (numA !== numB) return numA - numB;
+                return a.title.localeCompare(b.title);
+            });
+            setAvailableExams(sortedExams); 
+        }
     });
   }, []);
+
+  // ✅ 2. NEW FIX: Auto-Scroll to Top when Step changes
+  useEffect(() => {
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }, [step]);
 
   const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -40,8 +53,6 @@ export default function StudentExamPortal() {
   // --- STEP 1: REGISTRATION ---
   const handleRegSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-    
-    // Validate ALL fields (Supervisor is now MANDATORY)
     if (!formData.fullName || !formData.companyName || !formData.email || !formData.phone || !formData.supName || !formData.supEmail) {
         setError("All fields, including Supervisor details, are mandatory.");
         return;
@@ -52,27 +63,25 @@ export default function StudentExamPortal() {
         const payload = new FormData();
         Object.entries(formData).forEach(([k, v]) => payload.append(k, v));
         
-        // Send Emails (Student, Supervisor, Admin)
         await sendRegistrationEmails(payload);
         
-        // Move to Language Step
         setStep(2); 
     });
   };
 
-  // --- STEP 2: LANGUAGE ---
+  // --- STEP 3: LANGUAGE ---
   const handleLanguageSelect = (lang: string) => {
      setSelectedLang(lang);
-     setStep(3); // Go to Bank Selection
+     setStep(4);
   };
 
-  // --- STEP 3: SELECT BANK ---
+  // --- STEP 4: SELECT BANK ---
   const handleBankSelect = (examId: string) => {
       setSelectedExamId(examId);
-      setStep(4); // Go to Code Entry
+      setStep(5);
   };
 
-  // --- STEP 4: VERIFY CODE & START ---
+  // --- STEP 5: VERIFY CODE & START ---
   const handleFinalStart = async () => {
     if(!accessCode) { setError("Please enter Access Code"); return; }
     setError('');
@@ -81,23 +90,14 @@ export default function StudentExamPortal() {
         const payload = new FormData();
         payload.append('accessCode', accessCode);
         payload.append('examId', selectedExamId);
-        // Pass student details again to link them to the specific access code record
         Object.entries(formData).forEach(([k, v]) => payload.append(k, v));
 
         // @ts-ignore
         const result = await verifyAndStartExam(payload);
 
-        // 1. Check if Exam is already completed
-        if (result.isCompleted) {
-             router.push(`/exam/result?code=${accessCode}`);
-             return;
-        }
-
-        // 2. Handle Errors
         if (!result.success) {
             setError(result.message || 'Invalid Code');
         } else {
-            // 3. Success! Redirect to Exam Interface
             router.push(`/exam/start?code=${accessCode}&lang=${selectedLang}&examId=${selectedExamId}`);
         }
     });
@@ -111,7 +111,7 @@ export default function StudentExamPortal() {
         </h1>
       </div>
 
-      <div className={`bg-white rounded-2xl shadow-xl border border-gray-100 w-full transition-all duration-500 ${step === 3 ? 'max-w-6xl p-8' : 'max-w-lg p-8'}`}>
+      <div className={`bg-white rounded-2xl shadow-xl border border-gray-100 w-full transition-all duration-500 ${step === 2 ? 'max-w-4xl p-8' : step === 4 ? 'max-w-6xl p-8' : 'max-w-lg p-8'}`}>
         
         {/* --- STEP 1: REGISTRATION --- */}
         {step === 1 && (
@@ -123,35 +123,28 @@ export default function StudentExamPortal() {
             {error && <div className="bg-red-50 text-red-600 p-3 rounded-lg text-sm text-center">{error}</div>}
             
             <div className="space-y-4">
-                {/* Inputs use text-gray-900 for high visibility on mobile */}
                 <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Full Name *</label>
                     <input name="fullName" value={formData.fullName} onChange={handleInputChange} required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter your full name" />
                 </div>
-                
                 <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Company Name *</label>
                     <input name="companyName" value={formData.companyName} onChange={handleInputChange} required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter company name" />
                 </div>
-                
                 <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Email Address *</label>
                     <input name="email" type="email" value={formData.email} onChange={handleInputChange} required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter email address" />
                 </div>
-                
                 <div>
                     <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Phone Number *</label>
                     <input name="phone" type="tel" value={formData.phone} onChange={handleInputChange} required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="Enter phone number" />
                 </div>
-                
-                {/* Supervisor Fields - Now Mandatory */}
                 <div className="pt-4 border-t border-gray-100 mt-4">
                     <div className="space-y-4">
                         <div>
                             <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Supervisor Name *</label>
                             <input name="supName" value={formData.supName} onChange={handleInputChange} required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. John Doe" />
                         </div>
-                        
                         <div>
                             <label className="block text-xs font-bold text-gray-700 mb-1 uppercase">Supervisor Email *</label>
                             <input name="supEmail" type="email" value={formData.supEmail} onChange={handleInputChange} required className="w-full px-4 py-3 bg-gray-50 border border-gray-200 rounded-xl text-gray-900 focus:ring-2 focus:ring-blue-500 outline-none" placeholder="e.g. supervisor@company.com" />
@@ -166,8 +159,68 @@ export default function StudentExamPortal() {
           </form>
         )}
 
-        {/* --- STEP 2: LANGUAGE --- */}
+        {/* --- STEP 2: INSTRUCTIONS --- */}
         {step === 2 && (
+            <div className="space-y-6">
+                <div className="text-center border-b border-gray-100 pb-4">
+                    <h2 className="text-2xl font-bold text-gray-900">Instructions for Candidates</h2>
+                    <p className="text-gray-500 text-sm mt-1">Please read the instructions carefully before starting the test.</p>
+                </div>
+
+                <div className="space-y-6 text-gray-700 text-sm md:text-base h-[60vh] md:h-auto overflow-y-auto pr-2">
+                    {/* Section 1 */}
+                    <div className="bg-blue-50 p-5 rounded-xl border border-blue-100">
+                        <h3 className="font-bold text-blue-800 mb-3 flex items-center gap-2">
+                            <span>📋</span> Test Format & Rules
+                        </h3>
+                        <ul className="list-disc pl-5 space-y-2 text-blue-900">
+                            <li>The test must be completed within the <strong>permitted time</strong>. Once expired, it will auto-submit.</li>
+                            <li><strong>No negative marking</strong> for incorrect answers.</li>
+                            <li>Use of a calculator is <strong>permitted</strong>.</li>
+                            <li>You may navigate <strong>back and forth</strong> between questions until final submission.</li>
+                            <li>Answers can be modified any number of times <strong>before clicking Submit</strong>.</li>
+                            <li>Once submitted, <strong>no changes are allowed</strong>.</li>
+                        </ul>
+                    </div>
+
+                    {/* Section 2 */}
+                    <div className="bg-amber-50 p-5 rounded-xl border border-amber-100">
+                        <h3 className="font-bold text-amber-800 mb-3 flex items-center gap-2">
+                            <span>💻</span> During the Test
+                        </h3>
+                        <ul className="list-disc pl-5 space-y-2 text-amber-900">
+                            <li>Ensure a <strong>stable internet connection</strong>.</li>
+                            <li><strong>Do not refresh or close</strong> the browser during the test.</li>
+                            <li>Use a <strong>desktop/laptop</strong> for best performance.</li>
+                            <li>Some questions may be indirect, application-based, or scenario-driven.</li>
+                        </ul>
+                    </div>
+
+                    {/* Section 3 */}
+                    <div className="bg-green-50 p-5 rounded-xl border border-green-100">
+                        <h3 className="font-bold text-green-800 mb-3 flex items-center gap-2">
+                            <span>⏱️</span> Time Management
+                        </h3>
+                        <ul className="list-disc pl-5 space-y-2 text-green-900">
+                            <li>Do not get stuck on one question. <strong>Attempt, mark, and move on</strong>.</li>
+                            <li>Aim to complete the paper with at least <strong>5 minutes for review</strong>.</li>
+                        </ul>
+                    </div>
+                </div>
+
+                <div className="flex flex-col md:flex-row gap-3 pt-4 border-t border-gray-100">
+                    <button onClick={() => setStep(1)} className="flex-1 px-6 py-3 bg-gray-100 text-gray-700 rounded-xl font-bold hover:bg-gray-200 transition-colors cursor-pointer">
+                        Back
+                    </button>
+                    <button onClick={() => setStep(3)} className="flex-[2] bg-blue-600 text-white py-3 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 cursor-pointer">
+                        I have read and understood the instructions
+                    </button>
+                </div>
+            </div>
+        )}
+
+        {/* --- STEP 3: LANGUAGE --- */}
+        {step === 3 && (
            <div className="text-center">
               <h2 className="text-2xl font-bold text-gray-900 mb-2">Select Language</h2>
               <p className="text-gray-500 text-sm mb-8">Questions will be shown in English + Your Choice.</p>
@@ -179,12 +232,12 @@ export default function StudentExamPortal() {
                     </button>
                  ))}
               </div>
-              <button onClick={() => setStep(1)} className="text-gray-500 text-sm hover:underline cursor-pointer">← Back to Registration</button>
+              <button onClick={() => setStep(2)} className="text-gray-500 text-sm hover:underline cursor-pointer">← Back to Instructions</button>
            </div>
         )}
 
-        {/* --- STEP 3: QUESTION BANKS --- */}
-        {step === 3 && (
+        {/* --- STEP 4: QUESTION BANKS --- */}
+        {step === 4 && (
            <div className="text-center">
               <h2 className="text-3xl font-bold text-gray-900 mb-2">Select Question Bank</h2>
               <p className="text-gray-500 text-sm mb-8">Choose an assessment to unlock.</p>
@@ -209,12 +262,12 @@ export default function StudentExamPortal() {
                     ))}
                   </div>
               )}
-              <div className="mt-8"><button onClick={() => setStep(2)} className="text-gray-500 text-sm hover:underline cursor-pointer">← Back to Language</button></div>
+              <div className="mt-8"><button onClick={() => setStep(3)} className="text-gray-500 text-sm hover:underline cursor-pointer">← Back to Language</button></div>
            </div>
         )}
 
-        {/* --- STEP 4: ACCESS CODE ENTRY --- */}
-        {step === 4 && (
+        {/* --- STEP 5: ACCESS CODE ENTRY --- */}
+        {step === 5 && (
           <div className="text-center space-y-6">
               <div className="flex justify-center mb-4"><div className="w-16 h-16 bg-blue-50 text-blue-600 rounded-2xl flex items-center justify-center text-3xl">🔒</div></div>
               <h2 className="text-2xl font-bold text-gray-900">Enter Access Code</h2>
@@ -233,7 +286,7 @@ export default function StudentExamPortal() {
                 <button onClick={handleFinalStart} disabled={isPending} className="w-full bg-blue-600 text-white py-3.5 rounded-xl font-bold hover:bg-blue-700 transition-all shadow-lg shadow-blue-500/30 cursor-pointer">
                     {isPending ? 'Verifying...' : 'Start Exam'}
                 </button>
-                <button onClick={() => setStep(3)} className="text-sm text-gray-500 hover:text-gray-900 hover:underline cursor-pointer">← Back to Selection</button>
+                <button onClick={() => setStep(4)} className="text-sm text-gray-500 hover:text-gray-900 hover:underline cursor-pointer">← Back to Selection</button>
               </div>
           </div>
         )}

@@ -2,9 +2,10 @@
 
 import { prisma } from '@/app/lib/prisma';
 import nodemailer from 'nodemailer';
-import { getTranslation } from '@/app/lib/translator';
-
-const delay = (ms: number) => new Promise(res => setTimeout(res, ms));
+import { renderToStream } from '@react-pdf/renderer'; 
+import ExamReportPDF from '@/app/components/ExamReportPDF'; 
+import React from 'react';
+import { Readable } from 'stream';
 
 const createTransporter = () => {
   return nodemailer.createTransport({
@@ -15,7 +16,16 @@ const createTransporter = () => {
   });
 };
 
-// --- 1. SEND REGISTRATION EMAILS (Kept Async to ensure delivery confirmation) ---
+// ✅ HELPER: Robust Stream to Buffer Conversion
+async function streamToBuffer(stream: Readable): Promise<Buffer> {
+  const chunks: Buffer[] = [];
+  for await (const chunk of stream) {
+    chunks.push(Buffer.from(chunk));
+  }
+  return Buffer.concat(chunks);
+}
+
+// --- 1. SEND REGISTRATION EMAILS ---
 export async function sendRegistrationEmails(formData: FormData) {
   try {
     const name = (formData.get('fullName') as string) || '';
@@ -27,11 +37,9 @@ export async function sendRegistrationEmails(formData: FormData) {
 
     const transporter = createTransporter();
     
-    // Base styles
     const containerStyle = "font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px; max-width: 600px; margin: auto;";
     const btnStyle = "display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 20px; cursor: pointer;";
 
-    // 1. Email to ADMIN
     if (process.env.ADMIN_EMAIL) {
       transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
@@ -44,10 +52,9 @@ export async function sendRegistrationEmails(formData: FormData) {
             <p>Phone: ${phone}</p>
             <p>Supervisor: ${supName} (${supEmail})</p>
           </div>`,
-      }).catch(err => console.error("Admin Email Failed", err));
+      }).catch(() => {});
     }
 
-    // 2. Email to STUDENT
     if (email) {
       await transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
@@ -64,7 +71,6 @@ export async function sendRegistrationEmails(formData: FormData) {
       });
     }
 
-    // 3. Email to SUPERVISOR
     if (supEmail) {
       transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
@@ -76,7 +82,7 @@ export async function sendRegistrationEmails(formData: FormData) {
             <p>Hello ${supName},</p>
             <p>Your student <strong>${name}</strong> (${email}) has registered for <strong>${company}</strong>.</p>
           </div>`,
-      }).catch(err => console.error("Sup Email Failed", err));
+      }).catch(() => {});
     }
 
     return { success: true };
@@ -100,19 +106,33 @@ export async function verifyAndStartExam(formData: FormData) {
     const accessRecord = await prisma.examAccess.findUnique({ where: { accessCode: code } });
 
     if (!accessRecord) return { success: false, message: 'Invalid Access Code.' };
-    if (accessRecord.status === 'COMPLETED') return { success: false, isCompleted: true, message: 'Exam already completed.' };
+    
+    if (accessRecord.status === 'COMPLETED') {
+        return { 
+            success: false, 
+            message: '⚠️ This code has already been used. You cannot attempt the exam again.' 
+        };
+    }
+
+    if (accessRecord.status === 'STARTED') {
+        return { 
+            success: false, 
+            message: '⚠️ This code is currently active or has been used. You cannot restart the exam.' 
+        };
+    }
 
     if (accessRecord.companyName?.trim().toLowerCase() !== inputCompany?.trim().toLowerCase()) {
       return { success: false, message: `Code does not belong to ${inputCompany}.` };
     }
 
-    // 🛡️ SECURITY: 'sentAt' acts as the OFFICIAL START TIME
     await prisma.examAccess.update({
       where: { id: accessRecord.id },
       data: {
         studentName: name, studentEmail: email, studentPhone: phone,
         supervisorName: supName, supervisorEmail: supEmail,
-        examId: examId, status: 'STARTED', sentAt: new Date() 
+        examId: examId, 
+        status: 'STARTED', 
+        sentAt: new Date() 
       }
     });
 
@@ -161,12 +181,12 @@ export async function fetchExamContent(accessCode: string, specificExamId?: stri
     const processedQuestions = examData.questions.map(q => {
         const trans = q.translations[0];
         return {
-            ...q,
+            id: q.id,
             text: q.text, 
             options: q.options,
+            marks: q.marks,
             translatedText: (targetLang && targetLang !== 'English' && trans) ? trans.text : null,
             translatedOptions: (targetLang && targetLang !== 'English' && trans) ? trans.options : null,
-            translations: undefined 
         };
     });
 
@@ -177,33 +197,18 @@ export async function fetchExamContent(accessCode: string, specificExamId?: stri
   }
 }
 
-// --- 5. SUBMIT EXAM (🛡️ SECURITY UPGRADED) ---
+// --- 5. SUBMIT EXAM ---
 export async function submitExam(accessCode: string, answers: Record<string, number>, examId: string) {
   try {
     const record = await prisma.examAccess.findUnique({ where: { accessCode } });
     const exam = await prisma.exam.findUnique({ where: { id: examId }, include: { questions: true } });
     if (!record || !exam) return { success: false };
 
-    // 🛡️ SECURITY CHECK: Time Validation
-    // We check the time on the SERVER, not the client.
-    if (record.sentAt) {
-        const startTime = new Date(record.sentAt).getTime();
-        const currentTime = new Date().getTime();
-        const timeTakenMinutes = (currentTime - startTime) / 1000 / 60;
-        
-        // Allow a 2-minute "grace period" for slow internet/latency
-        const allowedDuration = exam.durationMin + 2; 
-
-        if (timeTakenMinutes > allowedDuration) {
-            // OPTION: We accept the exam but you could mark it as 'LATE' in database if you added a flag.
-            // For now, we will log it and proceed, OR you can return { success: false } to reject it.
-            // Proceeding is usually safer for UX, as legitimate lag happens.
-        }
-    }
-
     let score = 0;
     exam.questions.forEach(q => {
-      if (answers[q.id] === q.correctOption) score += q.marks;
+      if (answers[q.id] !== undefined && answers[q.id] === q.correctOption) {
+          score += q.marks;
+      }
     });
 
     await prisma.examAccess.update({
@@ -212,7 +217,9 @@ export async function submitExam(accessCode: string, answers: Record<string, num
     });
 
     return { success: true, score };
-  } catch (error) { return { success: false }; }
+  } catch (error) { 
+    return { success: false }; 
+  }
 }
 
 // --- 6. GET RESULT ---
@@ -226,9 +233,34 @@ export async function getExamResult(accessCode: string) {
     if (!record || record.status !== 'COMPLETED' || !record.exam) return { success: false };
 
     const questions = record.exam.questions;
+    const studentAnswers = (record.answers as Record<string, number>) || {}; 
     const totalMaxMarks = questions.reduce((sum, q) => sum + q.marks, 0);
     const score = record.score || 0;
-    const isPass = score >= (totalMaxMarks * 0.4);
+    const isPass = score >= (totalMaxMarks * 0.5); // 50% Pass
+
+    const breakdown = questions.map((q, index) => {
+        const userAnswer = studentAnswers[q.id];
+        let status = 'skipped';
+        
+        if (userAnswer !== undefined && userAnswer !== null) {
+            if (Number(userAnswer) === q.correctOption) {
+                status = 'correct';
+            } else {
+                status = 'wrong';
+            }
+        }
+
+        return {
+            id: q.id,
+            number: index + 1,
+            questionText: q.text,
+            status: status 
+        };
+    });
+
+    const correctCount = breakdown.filter(b => b.status === 'correct').length;
+    const wrongCount = breakdown.filter(b => b.status === 'wrong').length;
+    const skippedCount = breakdown.filter(b => b.status === 'skipped').length;
 
     return {
       success: true,
@@ -241,14 +273,20 @@ export async function getExamResult(accessCode: string) {
         submittedAt: record.submittedAt,
         score,
         totalQuestions: totalMaxMarks,
-        correctAnswers: score,
-        status: isPass ? 'Pass' : 'Fail'
+        questionCount: questions.length, 
+        correctAnswers: correctCount,
+        wrongAnswers: wrongCount,
+        skippedAnswers: skippedCount,
+        status: isPass ? 'Pass' : 'Fail',
+        breakdown: breakdown
       }
     };
-  } catch (e) { return { success: false }; }
+  } catch (e) { 
+      return { success: false }; 
+  }
 }
 
-// --- 7. SEND REPORT EMAIL (🚀 PERFORMANCE UPGRADED: FIRE & FORGET) ---
+// --- 7. SEND REPORT EMAIL (FIXED ATTACHMENT ISSUE) ---
 export async function sendReportEmail(accessCode: string) {
   try {
     const record = await prisma.examAccess.findUnique({ 
@@ -262,94 +300,90 @@ export async function sendReportEmail(accessCode: string) {
     const questions = record.exam.questions;
     const totalMaxMarks = questions.reduce((sum, q) => sum + q.marks, 0);
     const score = record.score || 0;
-    const isPass = score >= (totalMaxMarks * 0.4);
+    const isPass = score >= (totalMaxMarks * 0.5); 
+
+    const safeStudentName = record.studentName || 'Student';
+    const safeSupervisorName = record.supervisorName || 'Supervisor';
+
+    const pdfData = {
+        student: { 
+            name: safeStudentName,
+            email: record.studentEmail || 'N/A', 
+            phone: record.studentPhone || 'N/A',
+            company: record.companyName || 'N/A'
+        },
+        supervisor: { 
+            name: safeSupervisorName
+        },
+        exam: { 
+            title: record.exam.title,
+            date: record.submittedAt ? new Date(record.submittedAt).toLocaleDateString() : new Date().toLocaleDateString(),
+            id: record.accessCode
+        },
+        result: {
+            score: score,
+            totalMarks: totalMaxMarks,
+            percentage: Math.round((score / totalMaxMarks) * 100),
+            status: isPass ? 'PASS' : 'FAIL',
+            answers: questions.map((q, i) => ({
+                index: i + 1,
+                questionText: q.text,
+                isCorrect: studentAnswers[q.id] === q.correctOption,
+                status: studentAnswers[q.id] === q.correctOption ? 'Correct' : 'Wrong'
+            }))
+        }
+    };
+
+    // 1. Generate PDF Stream
+    const pdfStream = await renderToStream(
+        React.createElement(ExamReportPDF, pdfData) as any
+    );
+
+    // 2. ✅ CRITICAL FIX: Convert Stream to Buffer
+    // Streams can only be read once. By converting to Buffer, we can attach it multiple times safely.
+    const pdfBuffer = await streamToBuffer(pdfStream);
 
     const transporter = createTransporter();
     
-    // Build HTML for Questions
-    let questionsHtml = '';
-    questions.forEach((q, index) => {
-        const userChoice = studentAnswers[q.id];
-        const correctChoice = q.correctOption;
-        const isCorrect = userChoice === correctChoice;
-        
-        let optionsList = '';
-        q.options.forEach((opt, optIdx) => {
-            let style = 'padding: 8px; margin: 4px 0; font-size: 14px; list-style: none; border-radius: 4px;';
-            let mark = '';
-
-            if (optIdx === correctChoice) {
-                style += 'color: #166534; font-weight: bold; background-color: #dcfce7; border: 1px solid #bbf7d0;';
-                mark = ' ✅';
-            } else if (optIdx === userChoice && !isCorrect) {
-                style += 'color: #991b1b; font-weight: bold; background-color: #fee2e2; border: 1px solid #fecaca;';
-                mark = ' ❌ (Your Answer)';
-            } else if (optIdx === userChoice && isCorrect) {
-                 mark = ' (Your Answer)';
-            } else {
-                style += 'color: #4b5563; background-color: #f9fafb;';
-            }
-            optionsList += `<li style="${style}">${opt}${mark}</li>`;
-        });
-
-        questionsHtml += `
-            <div style="margin-bottom: 24px; padding: 20px; border: 1px solid #e5e7eb; border-radius: 12px; background-color: #fff; border-left: 5px solid ${isCorrect ? '#22c55e' : '#ef4444'}; box-shadow: 0 1px 2px rgba(0,0,0,0.05);">
-                <p style="margin: 0 0 12px 0; font-weight: bold; font-size: 16px; color: #111827;">
-                    <span style="color: #6b7280; font-size: 14px; text-transform: uppercase;">Q${index + 1}:</span> ${q.text} 
-                </p>
-                <ul style="padding: 0; margin: 0;">${optionsList}</ul>
-            </div>
-        `;
-    });
-
-    const html = `
-        <div style="font-family: Arial, sans-serif; max-width: 700px; margin: 0 auto; color: #374151; background-color: #f3f4f6; padding: 20px;">
-            <div style="background-color: white; padding: 30px; border-radius: 16px; box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);">
-                <div style="text-align: center; border-bottom: 2px solid #f3f4f6; padding-bottom: 20px; margin-bottom: 20px;">
-                    <h1 style="color: #2563eb; margin: 0; font-size: 24px;">Detailed Exam Report</h1>
-                    <p style="color: #6b7280; margin: 5px 0 0;">${record.exam.title}</p>
-                </div>
-
-                <div style="background-color: ${isPass ? '#f0fdf4' : '#fef2f2'}; padding: 20px; border-radius: 12px; border: 1px solid ${isPass ? '#bbf7d0' : '#fecaca'}; text-align: center; margin-bottom: 30px;">
-                    <h2 style="color: ${isPass ? '#166534' : '#991b1b'}; margin: 0; font-size: 32px;">${isPass ? 'PASS' : 'FAIL'}</h2>
-                    <p style="font-size: 18px; margin: 5px 0 0; color: #374151;">Score: <strong>${score}</strong> / ${totalMaxMarks}</p>
-                </div>
-
-                <table style="width: 100%; font-size: 14px; color: #4b5563; margin-bottom: 30px;">
-                    <tr><td style="padding: 5px 0;"><strong>Student:</strong></td><td style="text-align: right;">${record.studentName}</td></tr>
-                    <tr><td style="padding: 5px 0;"><strong>ID:</strong></td><td style="text-align: right;">${record.accessCode}</td></tr>
-                    <tr><td style="padding: 5px 0;"><strong>Date:</strong></td><td style="text-align: right;">${new Date().toLocaleDateString()}</td></tr>
-                </table>
-
-                <h3 style="border-bottom: 1px solid #e5e7eb; padding-bottom: 10px; color: #111827; margin-top: 0;">Question Breakdown</h3>
-                ${questionsHtml}
-                
-                <div style="text-align: center; margin-top: 40px; padding-top: 20px; border-top: 1px solid #f3f4f6; color: #9ca3af; font-size: 12px;">
-                    © ExamPortal Automated Report
-                </div>
-            </div>
-        </div>
-    `;
-
-    // Filter recipients
+    // 3. Define Recipients
     const recipients = [
         record.studentEmail, 
         record.supervisorEmail, 
         process.env.ADMIN_EMAIL
     ].filter((e): e is string => !!e && e.length > 0);
 
+    // 4. ✅ FIX: Send Sequentially (Loop)
+    // Sending in parallel (Promise.all) often corrupts attachments for the 2nd/3rd person.
+    // Using a for..of loop ensures one email finishes before the next starts.
     if (recipients.length > 0) {
-      // 🚀 PERFORMANCE FIX: Fire & Forget
-      // We start the email process but DO NOT 'await' it. 
-      // This returns { success: true } immediately to the user.
-      Promise.allSettled(recipients.map(e =>
-        transporter.sendMail({
-          from: process.env.SMTP_USER,
-          to: e,
-          subject: `📄 Result: ${record.studentName} - ${isPass ? 'PASS' : 'FAIL'}`,
-          html
-        })
-      )).catch(err => console.error("Background Email Error", err));
+        for (const email of recipients) {
+            await transporter.sendMail({
+                from: process.env.SMTP_USER,
+                to: email,
+                subject: `📄 Official Exam Report: ${safeStudentName}`,
+                html: `
+                    <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px;">
+                    <h2 style="color: #2563eb; margin-bottom: 20px;">Exam Result Notification</h2>
+                    <p>Hello,</p>
+                    <p>The official examination report for <strong>${safeStudentName}</strong> (${record.companyName || 'Company'}) is attached.</p>
+                    
+                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid ${isPass ? '#22c55e' : '#ef4444'};">
+                        <p style="margin: 0; font-size: 14px; color: #64748b;">Result Status</p>
+                        <p style="margin: 5px 0 0; font-size: 20px; font-weight: bold; color: #0f172a;">${isPass ? 'PASSED' : 'FAILED'}</p>
+                        <p style="margin: 5px 0 0; font-size: 14px; color: #475569;">Score: ${score} / ${totalMaxMarks} (${Math.round((score / totalMaxMarks) * 100)}%)</p>
+                    </div>
+
+                    <p style="font-size: 12px; color: #94a3b8; margin-top: 30px;">This is an automated message. Please do not reply.</p>
+                    </div>
+                `,
+                attachments: [
+                    {
+                        filename: `ExamReport_${safeStudentName.replace(/\s+/g, '_')}.pdf`,
+                        content: pdfBuffer, // Send the safe Buffer copy
+                    }
+                ]
+            });
+        }
     }
 
     return { success: true };
