@@ -5,7 +5,6 @@ import nodemailer from 'nodemailer';
 import { renderToStream } from '@react-pdf/renderer'; 
 import ExamReportPDF from '@/app/components/ExamReportPDF'; 
 import React from 'react';
-import { Readable } from 'stream';
 
 const createTransporter = () => {
   return nodemailer.createTransport({
@@ -16,8 +15,8 @@ const createTransporter = () => {
   });
 };
 
-// ✅ HELPER: Robust Stream to Buffer Conversion
-async function streamToBuffer(stream: Readable): Promise<Buffer> {
+// ✅ FIXED: Type changed to 'any' to resolve "ReadableStream not assignable to Readable" error
+async function streamToBuffer(stream: any): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {
     chunks.push(Buffer.from(chunk));
@@ -286,7 +285,7 @@ export async function getExamResult(accessCode: string) {
   }
 }
 
-// --- 7. SEND REPORT EMAIL (FIXED ATTACHMENT ISSUE) ---
+// --- 7. SEND REPORT EMAIL ---
 export async function sendReportEmail(accessCode: string) {
   try {
     const record = await prisma.examAccess.findUnique({ 
@@ -339,8 +338,7 @@ export async function sendReportEmail(accessCode: string) {
         React.createElement(ExamReportPDF, pdfData) as any
     );
 
-    // 2. ✅ CRITICAL FIX: Convert Stream to Buffer
-    // Streams can only be read once. By converting to Buffer, we can attach it multiple times safely.
+    // 2. Convert to Buffer (Safe for multiple sends)
     const pdfBuffer = await streamToBuffer(pdfStream);
 
     const transporter = createTransporter();
@@ -352,9 +350,7 @@ export async function sendReportEmail(accessCode: string) {
         process.env.ADMIN_EMAIL
     ].filter((e): e is string => !!e && e.length > 0);
 
-    // 4. ✅ FIX: Send Sequentially (Loop)
-    // Sending in parallel (Promise.all) often corrupts attachments for the 2nd/3rd person.
-    // Using a for..of loop ensures one email finishes before the next starts.
+    // 4. Send Sequentially to prevent corruption
     if (recipients.length > 0) {
         for (const email of recipients) {
             await transporter.sendMail({
@@ -379,7 +375,7 @@ export async function sendReportEmail(accessCode: string) {
                 attachments: [
                     {
                         filename: `ExamReport_${safeStudentName.replace(/\s+/g, '_')}.pdf`,
-                        content: pdfBuffer, // Send the safe Buffer copy
+                        content: pdfBuffer,
                     }
                 ]
             });
