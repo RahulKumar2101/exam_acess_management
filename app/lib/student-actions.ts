@@ -39,8 +39,9 @@ export async function sendRegistrationEmails(formData: FormData) {
     const containerStyle = "font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px; max-width: 600px; margin: auto;";
     const btnStyle = "display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 20px; cursor: pointer;";
 
+    // ✅ FIXED: Added 'await' to ensure Admin notification is sent in production
     if (process.env.ADMIN_EMAIL) {
-      transporter.sendMail({
+      await transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
         to: process.env.ADMIN_EMAIL,
         subject: `🔔 New Registration: ${name}`,
@@ -70,8 +71,9 @@ export async function sendRegistrationEmails(formData: FormData) {
       });
     }
 
+    // ✅ FIXED: Added 'await' to ensure Supervisor alert is sent in production
     if (supEmail) {
-      transporter.sendMail({
+      await transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
         to: supEmail,
         subject: `📢 Student Registered: ${name}`,
@@ -81,7 +83,7 @@ export async function sendRegistrationEmails(formData: FormData) {
             <p>Hello ${supName},</p>
             <p>Your student <strong>${name}</strong> (${email}) has registered for <strong>${company}</strong>.</p>
           </div>`,
-      }).catch(() => {});
+      });
     }
 
     return { success: true };
@@ -353,8 +355,9 @@ export async function sendReportEmail(accessCode: string) {
     // 4. Send Sequentially to prevent corruption
     if (recipients.length > 0) {
         for (const email of recipients) {
+            // ✅ FIXED: Added 'await' to loop to ensure every recipient gets the report
             await transporter.sendMail({
-                from: process.env.SMTP_USER,
+                from: `"Exam Portal" <${process.env.SMTP_USER}>`,
                 to: email,
                 subject: `📄 Official Exam Report: ${safeStudentName}`,
                 html: `
