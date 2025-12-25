@@ -35,7 +35,7 @@ model Exam {
   
   questions   Question[]
   
-  // Link to Student Access Codes
+  // Link to Student Access Codes (Required for filtering responses by Exam)
   accessCodes ExamAccess[] 
 }
 
@@ -52,31 +52,31 @@ model Question {
   exam          Exam     @relation(fields: [examId], references: [id], onDelete: Cascade)
   examId        String
 
-  // ✅ ADDED RELATION: Link to pre-generated translations
+  // Link to pre-generated translations
   translations  QuestionTranslation[]
 }
 
-// ✅ 4. QUESTION TRANSLATIONS (New Model)
+// 4. QUESTION TRANSLATIONS
 model QuestionTranslation {
-  id          String   @id @default(uuid())
+  id           String   @id @default(uuid())
   
-  language    String   // e.g. "Hindi", "Marathi"
+  language     String   // e.g. "Hindi", "Marathi"
   
-  text        String   // Translated Question Text
-  options     String[] // Translated Options
+  text         String   // Translated Question Text
+  options      String[] // Translated Options
   
-  question    Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
-  questionId  String
+  question     Question @relation(fields: [questionId], references: [id], onDelete: Cascade)
+  questionId   String
 
   // Ensure we only have one translation per language per question
   @@unique([questionId, language])
 }
 
-// 5. EXAM ACCESS (Student Login Management)
+// 5. EXAM ACCESS (Student Login Management & Responses)
 model ExamAccess {
   id              String    @id @default(uuid())
   
-  // Student Info
+  // Student Info (Captured during Registration)
   studentName     String?
   studentEmail    String?
   studentPhone    String?   
@@ -88,7 +88,7 @@ model ExamAccess {
   // Score & Results
   score           Int?      @default(0)
   
-  // Answers JSON
+  // Answers JSON (Stores { "questionId": selectedOptionIndex })
   answers         Json?     
   
   // Bulk Generation Fields
@@ -96,13 +96,13 @@ model ExamAccess {
   batchId         String?   
   
   accessCode      String    @unique 
-  status          String    @default("ACTIVE")
+  status          String    @default("ACTIVE") // ACTIVE, STARTED, COMPLETED
   
   sentAt          DateTime? 
   submittedAt     DateTime? 
   createdAt       DateTime  @default(now())
   
-  // Relation to Exam 
+  // Relation to Exam (Crucial for the Responses Dashboard)
   examId          String?
   exam            Exam?     @relation(fields: [examId], references: [id], onDelete: SetNull)
 }

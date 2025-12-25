@@ -42,7 +42,7 @@ export async function authenticate(
   }
 }
 
-// --- 2. CREATE EXAM ACTION ---
+// --- 2. CREATE EXAM ACTION (SECURED) ---
 export async function createExam(prevState: any, formData: FormData) {
   try {
     const session = await auth();
@@ -50,18 +50,12 @@ export async function createExam(prevState: any, formData: FormData) {
       return { message: 'Unauthorized: You must be logged in.' };
     }
 
-    let user = await prisma.user.findUnique({
+    const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
 
     if (!user) {
-      user = await prisma.user.create({
-        data: {
-          email: session.user.email,
-          password: 'temp-password-123', 
-          name: 'Admin User'
-        }
-      });
+      return { message: 'Access Denied: Admin account not found. Please contact support.' };
     }
 
     const title = formData.get('title') as string;
@@ -477,7 +471,7 @@ export async function generateExamTranslations(examId: string) {
   }
 }
 
-// ✅ 18. FETCH ALL EXAMS (For Question Banks View) ---
+// --- 18. FETCH ALL EXAMS (For Question Banks View) ---
 export async function getAllExams() {
   try {
     const exams = await prisma.exam.findMany({
@@ -496,7 +490,47 @@ export async function getAllExams() {
     });
     return exams;
   } catch (error) {
-    console.error("Error fetching all exams:", error);
+    return [];
+  }
+}
+
+// --- 19. FETCH EXAM RESPONSES (For Admin Responses View) ---
+export async function getExamResponses(examId?: string) {
+  try {
+    const session = await auth();
+    if (!session) return [];
+
+    const whereClause: any = {
+      studentName: { not: null } // Only show entries with student data
+    };
+
+    if (examId && examId !== 'all') {
+      whereClause.examId = examId;
+    }
+
+    const responses = await prisma.examAccess.findMany({
+      where: whereClause,
+      include: {
+        exam: {
+          select: { title: true }
+        }
+      },
+      orderBy: {
+        submittedAt: 'desc'
+      }
+    });
+
+    return responses.map(r => ({
+      id: r.id,
+      studentName: r.studentName,
+      email: r.studentEmail,
+      formTitle: r.exam?.title || 'Unknown Form',
+      status: r.status === 'COMPLETED' ? 'Submitted' : 'Pending',
+      score: r.score,
+      submissionDate: r.submittedAt ? r.submittedAt : r.sentAt 
+    }));
+
+  } catch (error) {
     return [];
   }
 }

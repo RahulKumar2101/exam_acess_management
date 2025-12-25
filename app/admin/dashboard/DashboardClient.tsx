@@ -15,10 +15,9 @@ import {
   generateBulkCodes, 
   deleteBatch, 
   updateBatch, 
-  resetAccessCode,
-  markAsSent,
   generateExamTranslations,
-  getAllExams // ✅ 1. IMPORT THE NEW ACTION
+  getAllExams,
+  getExamResponses // ✅ IMPORT NEW ACTION
 } from '@/app/lib/actions'; 
 import { useActionState } from 'react';
 import { useRouter } from 'next/navigation';
@@ -35,11 +34,24 @@ type BatchEntry = {
   count: number;
 };
 
+// ✅ NEW TYPE FOR RESPONSE DATA
+type ResponseData = {
+  id: string;
+  studentName: string | null;
+  email: string | null;
+  formTitle: string;
+  status: string;
+  score: number;
+  submissionDate: Date | null;
+};
+
 // --- ICONS ---
 const Icons = {
   Dashboard: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>,
   Forms: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M8 15h8"/></svg>,
   QuestionBanks: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h6"/><path d="M8 11h8"/></svg>,
+  // ✅ NEW ICON FOR RESPONSES
+  Responses: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>,
   Logout: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>,
   Trash: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>,
   Edit: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"/></svg>,
@@ -47,7 +59,8 @@ const Icons = {
   Download: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>,
   Menu: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="3" x2="21" y1="6" y2="6"/><line x1="3" x2="21" y1="12" y2="12"/><line x1="3" x2="21" y1="18" y2="18"/></svg>,
   Close: () => <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" x2="6" y1="6" y2="18"/><line x1="6" x2="18" y1="6" y2="18"/></svg>,
-  Translate: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+  Translate: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" x2="22" y1="12" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>,
+  Eye: () => <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
 };
 
 // Define Action State
@@ -55,7 +68,6 @@ type ActionState = {
   message: string;
   examId?: string;
   question?: Question;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   codes?: any[];
 } | undefined;
 
@@ -71,11 +83,11 @@ export default function DashboardClient({
   const router = useRouter();
   
   // STATE
-  const [currentView, setCurrentView] = useState<'DASHBOARD' | 'CREATE_FORM' | 'Q_BANKS' | 'ADD_QUESTIONS' | 'EXAM_ACCESS'>('DASHBOARD');
+  // ✅ ADDED 'RESPONSES' to view state
+  const [currentView, setCurrentView] = useState<'DASHBOARD' | 'CREATE_FORM' | 'Q_BANKS' | 'ADD_QUESTIONS' | 'EXAM_ACCESS' | 'RESPONSES'>('DASHBOARD');
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [activeExamTitle, setActiveExamTitle] = useState<string>('');
   
-  // ✅ 2. ADD STATE FOR ALL EXAMS
   const [allExams, setAllExams] = useState<Exam[]>(recentExams); 
 
   const [questionList, setQuestionList] = useState<Question[]>([]);
@@ -88,15 +100,19 @@ export default function DashboardClient({
   const [editingBatch, setEditingBatch] = useState<BatchEntry | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
+
+  // ✅ NEW STATE FOR RESPONSES
+  const [responseList, setResponseList] = useState<ResponseData[]>([]);
+  const [selectedExamFilter, setSelectedExamFilter] = useState<string>('all');
   
   // Mobile Menu State
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
 
   const [isPending, startTransition] = useTransition();
 
-  // ✅ 3. FETCH ALL EXAMS WHEN SWITCHING TO Q_BANKS VIEW
+  // Load All Exams when needed (Used for Q_BANKS and RESPONSES filters)
   useEffect(() => {
-    if (currentView === 'Q_BANKS') {
+    if (currentView === 'Q_BANKS' || currentView === 'RESPONSES') {
       startTransition(async () => {
         try {
           const exams = await getAllExams();
@@ -108,13 +124,24 @@ export default function DashboardClient({
     }
   }, [currentView]);
 
+  // ✅ FETCH RESPONSES WHEN VIEW OR FILTER CHANGES
+  useEffect(() => {
+    if (currentView === 'RESPONSES') {
+      startTransition(async () => {
+        try {
+           const data = await getExamResponses(selectedExamFilter);
+           // eslint-disable-next-line @typescript-eslint/no-explicit-any
+           setResponseList(data as any);
+        } catch(e) { console.error(e); }
+      });
+    }
+  }, [currentView, selectedExamFilter]);
+
   const fetchQuestions = useCallback(async (examId: string) => {
     try {
       const q = await getExamQuestions(examId);
       setQuestionList(q);
-    } catch {
-        // Suppress lint error
-    }
+    } catch {}
   }, []);
 
   const fetchAccessData = useCallback(async () => {
@@ -122,9 +149,7 @@ export default function DashboardClient({
        const data = await getExamAccessDashboard();
        setBatchList(data.batches as unknown as BatchEntry[]);
        setAccessStats(data.stats);
-    } catch {
-       // Suppress lint error
-    }
+    } catch {}
   }, []);
 
   useEffect(() => {
@@ -139,7 +164,6 @@ export default function DashboardClient({
     }
   }, [currentView, activeExamId, fetchQuestions, fetchAccessData]);
 
-  // Close mobile menu when view changes
   const handleViewChange = (view: typeof currentView) => {
     setCurrentView(view);
     setIsMobileMenuOpen(false);
@@ -149,7 +173,6 @@ export default function DashboardClient({
     if(!confirm('Delete this form?')) return;
     startTransition(async () => {
        await deleteExam(examId);
-       // Refresh local state immediately
        setAllExams(prev => prev.filter(e => e.id !== examId));
        router.refresh();
     });
@@ -202,10 +225,25 @@ export default function DashboardClient({
     setIsDownloading(false);
   }
 
-  // Handle Translations
+  // ✅ EXCEL DOWNLOAD FOR RESPONSES
+  const handleDownloadResponses = () => {
+    if(responseList.length === 0) return alert("No data to download");
+    const worksheet = XLSX.utils.json_to_sheet(responseList.map(r => ({
+      "Student Name": r.studentName,
+      "Email": r.email,
+      "Form": r.formTitle,
+      "Status": r.status,
+      "Score": r.score,
+      "Date": r.submissionDate ? new Date(r.submissionDate).toLocaleDateString() : '-'
+    })));
+    const workbook = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(workbook, worksheet, "Responses");
+    XLSX.writeFile(workbook, `Exam_Responses_${new Date().toISOString().split('T')[0]}.xlsx`);
+  }
+
   const handleGenerateTranslations = async () => {
     if (!activeExamId) return;
-    if (!confirm("This will auto-generate translations for 7 Indian languages (Hindi, Marathi, Bengali, Tamil, Telugu, Kannada, & Malayalam).")) return;
+    if (!confirm("This will auto-generate translations for 7 Indian languages.")) return;
     
     setIsTranslating(true);
     try {
@@ -222,6 +260,89 @@ export default function DashboardClient({
   };
 
   // --- VIEWS ---
+
+  // ✅ RENDER RESPONSES VIEW
+  const renderResponses = () => (
+    <div className="space-y-6">
+      <div className="bg-white p-6 rounded-2xl shadow-sm border border-gray-100">
+        <div className="flex flex-col md:flex-row justify-between items-center gap-4 mb-6">
+            <div>
+              <h2 className="text-xl font-bold text-gray-900">Responses & Tracking</h2>
+              <p className="text-sm text-gray-500">View and manage all form submissions.</p>
+            </div>
+            <div className="flex items-center gap-3 w-full md:w-auto">
+               <div className="relative flex-1 md:w-64">
+                  <select 
+                    value={selectedExamFilter} 
+                    onChange={(e) => setSelectedExamFilter(e.target.value)}
+                    className="w-full px-4 py-2.5 bg-gray-50 border border-gray-200 rounded-lg text-sm font-medium text-gray-700 focus:ring-2 focus:ring-blue-500 outline-none appearance-none cursor-pointer"
+                  >
+                    <option value="all">All Forms</option>
+                    {allExams.map(exam => (
+                      <option key={exam.id} value={exam.id}>{exam.title}</option>
+                    ))}
+                  </select>
+                  <span className="absolute right-3 top-3 text-gray-400 pointer-events-none text-xs">▼</span>
+               </div>
+               <button 
+                 onClick={handleDownloadResponses}
+                 className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 text-sm font-medium shadow-sm transition-all active:scale-95 whitespace-nowrap"
+               >
+                 <Icons.Download /> Download Excel
+               </button>
+            </div>
+        </div>
+
+        <div className="overflow-x-auto rounded-lg border border-gray-100">
+          <table className="w-full text-left text-sm text-gray-600 min-w-[800px]">
+            <thead className="bg-gray-50 text-gray-500 font-semibold uppercase tracking-wider text-xs">
+              <tr>
+                <th className="px-6 py-4">Student Name</th>
+                <th className="px-6 py-4">Email</th>
+                <th className="px-6 py-4">Form</th>
+                <th className="px-6 py-4">Status</th>
+                <th className="px-6 py-4">Submission Date</th>
+                <th className="px-6 py-4 text-right">Actions</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-gray-100">
+              {responseList.length === 0 ? (
+                 <tr><td colSpan={6} className="px-6 py-8 text-center text-gray-400">No responses found.</td></tr>
+              ) : (
+                responseList.map((response) => (
+                  <tr key={response.id} className="hover:bg-gray-50 transition-colors">
+                    <td className="px-6 py-4 font-medium text-gray-900">{response.studentName}</td>
+                    <td className="px-6 py-4 text-gray-500">{response.email}</td>
+                    <td className="px-6 py-4">{response.formTitle}</td>
+                    <td className="px-6 py-4">
+                      <span className={`px-2.5 py-1 rounded-full text-xs font-bold ${
+                        response.status === 'Submitted' 
+                          ? 'bg-emerald-100 text-emerald-700' 
+                          : 'bg-amber-100 text-amber-700'
+                      }`}>
+                        {response.status}
+                      </span>
+                    </td>
+                    <td className="px-6 py-4 text-gray-500">
+                      {response.submissionDate ? new Date(response.submissionDate).toLocaleString() : '-'}
+                    </td>
+                    <td className="px-6 py-4 text-right">
+                       <button className="text-gray-400 hover:text-blue-600 p-2 hover:bg-blue-50 rounded transition-colors" title="View Details">
+                         <Icons.Eye /> 
+                       </button>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+        <div className="mt-4 text-right text-xs text-gray-400">
+            Total: {responseList.length} responses
+        </div>
+      </div>
+    </div>
+  );
 
   const renderDashboard = () => (
     <div className="space-y-6 md:space-y-8">
@@ -453,6 +574,7 @@ export default function DashboardClient({
           <SidebarItem active={currentView === 'CREATE_FORM'} onClick={handleCreateNewClick} icon={<Icons.Forms />} label="Forms" />
           <SidebarItem active={currentView === 'Q_BANKS' || currentView === 'ADD_QUESTIONS'} onClick={() => handleViewChange('Q_BANKS')} icon={<Icons.QuestionBanks />} label="Question Banks" />
           <SidebarItem active={currentView === 'EXAM_ACCESS'} onClick={() => handleViewChange('EXAM_ACCESS')} icon={<Icons.Key />} label="Exam Access" />
+          <SidebarItem active={currentView === 'RESPONSES'} onClick={() => handleViewChange('RESPONSES')} icon={<Icons.Responses />} label="Responses" />
         </nav>
         <div className="p-4 m-4 border-t border-gray-100">
             <button onClick={() => startTransition(() => logoutAction())} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl transition-all font-semibold group cursor-pointer">
@@ -475,7 +597,7 @@ export default function DashboardClient({
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-6 md:mb-10 gap-4">
           <div>
             <h2 className="text-2xl md:text-3xl font-extrabold text-gray-900 tracking-tight">
-              {currentView === 'DASHBOARD' ? 'Dashboard' : currentView === 'CREATE_FORM' ? 'Create Form' : currentView === 'Q_BANKS' ? 'Question Banks' : currentView === 'EXAM_ACCESS' ? 'Exam Access Management' : 'Exam Builder'}
+              {currentView === 'DASHBOARD' ? 'Dashboard' : currentView === 'CREATE_FORM' ? 'Create Form' : currentView === 'Q_BANKS' ? 'Question Banks' : currentView === 'EXAM_ACCESS' ? 'Exam Access Management' : currentView === 'RESPONSES' ? 'Responses & Tracking' : 'Exam Builder'}
             </h2>
             <p className="text-gray-500 mt-2 font-medium text-sm md:text-base break-all">Welcome back, <span className="text-gray-800">{userEmail}</span></p>
           </div>
@@ -491,6 +613,7 @@ export default function DashboardClient({
         {currentView === 'Q_BANKS' && renderQBanks()}
         {currentView === 'ADD_QUESTIONS' && renderAddQuestions()}
         {currentView === 'EXAM_ACCESS' && renderExamAccess()}
+        {currentView === 'RESPONSES' && renderResponses()}
       </main>
     </div>
   );

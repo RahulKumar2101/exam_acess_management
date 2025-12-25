@@ -1,13 +1,6 @@
-import { auth } from '@/auth';
 import Link from 'next/link';
 
-export default async function Home() {
-  const session = await auth();
-  const isAdmin = !!session?.user;
-
-  // ❌ REMOVED: The automatic redirect block.
-  // Now, an Admin can visit this page freely.
-
+export default function Home() {
   return (
     <div className="min-h-screen bg-gradient-to-br from-blue-50 to-indigo-50 flex flex-col justify-center items-center p-6">
       
@@ -16,53 +9,27 @@ export default async function Home() {
           Exam<span className="text-blue-600">Portal</span>
         </h1>
         <p className="text-lg text-gray-600 max-w-md mx-auto">
-          Secure, automated examination management system for organizations and candidates.
+          Secure, automated examination management system.
         </p>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8 w-full max-w-4xl">
-        
-        {/* OPTION 1: STUDENT PORTAL */}
-        <div className="bg-white p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all border border-blue-100 flex flex-col items-center text-center group">
-          <div className="w-20 h-20 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-4xl mb-6 group-hover:scale-110 transition-transform">
+      <div className="w-full max-w-md">
+        {/* STUDENT PORTAL ONLY */}
+        <div className="bg-white p-10 rounded-3xl shadow-xl hover:shadow-2xl transition-all border border-blue-100 flex flex-col items-center text-center group">
+          <div className="w-24 h-24 bg-blue-100 text-blue-600 rounded-full flex items-center justify-center text-5xl mb-6 group-hover:scale-110 transition-transform">
             🎓
           </div>
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">Student Portal</h2>
-          <p className="text-gray-500 mb-8">
+          <h2 className="text-3xl font-bold text-gray-900 mb-3">Student Portal</h2>
+          <p className="text-gray-500 mb-8 text-lg">
             Enter your access code to start your assigned exam.
           </p>
           <Link 
             href="/exam" 
-            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all active:scale-95 cursor-pointer"
+            className="w-full bg-blue-600 text-white py-4 rounded-xl font-bold text-lg hover:bg-blue-700 shadow-lg shadow-blue-600/20 transition-all active:scale-95 cursor-pointer block"
           >
             Start Exam
           </Link>
         </div>
-
-        {/* OPTION 2: ADMIN AREA (Dynamic) */}
-        <div className="bg-white p-8 rounded-3xl shadow-xl hover:shadow-2xl transition-all border border-indigo-100 flex flex-col items-center text-center group">
-          <div className="w-20 h-20 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-4xl mb-6 group-hover:scale-110 transition-transform">
-            {isAdmin ? '⚡' : '🛡️'}
-          </div>
-          
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">
-            {isAdmin ? 'Admin Dashboard' : 'Admin Login'}
-          </h2>
-          
-          <p className="text-gray-500 mb-8">
-            {isAdmin 
-              ? 'Welcome back! Continue managing exams and results.' 
-              : 'Manage exams, generate codes, and view results.'}
-          </p>
-          
-          <Link 
-            href={isAdmin ? "/admin/dashboard" : "/login"} 
-            className="w-full bg-white text-indigo-600 border-2 border-indigo-100 py-4 rounded-xl font-bold text-lg hover:border-indigo-600 hover:bg-indigo-50 transition-all active:scale-95 cursor-pointer"
-          >
-            {isAdmin ? 'Go to Dashboard →' : 'Login to Dashboard'}
-          </Link>
-        </div>
-
       </div>
 
       <div className="mt-16 text-gray-400 text-sm font-medium">
