@@ -24,7 +24,7 @@ async function streamToBuffer(stream: any): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-// --- 1. SEND REGISTRATION EMAILS ---
+// --- 1. SEND REGISTRATION EMAILS (UPDATED WITH FULL DETAILS) ---
 export async function sendRegistrationEmails(formData: FormData) {
   try {
     const name = (formData.get('fullName') as string) || '';
@@ -36,25 +36,37 @@ export async function sendRegistrationEmails(formData: FormData) {
 
     const transporter = createTransporter();
     
-    const containerStyle = "font-family: sans-serif; padding: 20px; border: 1px solid #eee; border-radius: 8px; max-width: 600px; margin: auto;";
-    const btnStyle = "display: inline-block; background-color: #2563eb; color: white; padding: 12px 24px; text-decoration: none; border-radius: 6px; font-weight: bold; margin-top: 20px; cursor: pointer;";
+    // Styles for clean email presentation
+    const containerStyle = "font-family: Arial, sans-serif; padding: 25px; border: 1px solid #e5e7eb; border-radius: 12px; max-width: 600px; margin: auto; color: #374151;";
+    const headerStyle = "color: #2563eb; border-bottom: 2px solid #f3f4f6; padding-bottom: 10px; margin-bottom: 20px;";
+    const sectionStyle = "background-color: #f9fafb; padding: 15px; border-radius: 8px; margin: 10px 0;";
+    const labelStyle = "font-weight: bold; color: #111827; display: inline-block; width: 140px;";
+    const btnStyle = "display: inline-block; background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 25px; text-align: center;";
 
-    // ✅ FIXED: Added 'await' to ensure Admin notification is sent in production
+    // 1. ADMIN EMAIL (Full Data)
     if (process.env.ADMIN_EMAIL) {
       await transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
         to: process.env.ADMIN_EMAIL,
-        subject: `🔔 New Registration: ${name}`,
+        subject: `🔔 Full Registration Data: ${name}`,
         html: `
           <div style="${containerStyle}">
-            <h2 style="color:#2563eb">New Registration</h2>
-            <p><strong>${name}</strong> (${company}) registered.</p>
-            <p>Phone: ${phone}</p>
-            <p>Supervisor: ${supName} (${supEmail})</p>
+            <h2 style="${headerStyle}">New Portal Registration</h2>
+            <div style="${sectionStyle}">
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Student Name:</span> ${name}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Student Email:</span> ${email}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Student Phone:</span> ${phone}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Company:</span> ${company}</p>
+            </div>
+            <div style="${sectionStyle}">
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Supervisor:</span> ${supName}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Sup. Email:</span> ${supEmail}</p>
+            </div>
           </div>`,
       }).catch(() => {});
     }
 
+    // 2. STUDENT EMAIL (Details + Link)
     if (email) {
       await transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
@@ -62,16 +74,19 @@ export async function sendRegistrationEmails(formData: FormData) {
         subject: `✅ Registration Successful - ${company}`,
         html: `
           <div style="${containerStyle}">
-            <h2 style="color:#16a34a">Registration Confirmed</h2>
-            <p>Hi ${name},</p>
-            <p>You have successfully registered for the <strong>${company}</strong> exam.</p>
-            <p>Please click below to start your exam:</p>
-            <a href="${process.env.NEXT_PUBLIC_BASE_URL || '#'}" style="${btnStyle}">Start Exam Portal</a>
+            <h2 style="${headerStyle}">Registration Successful</h2>
+            <p>Hi ${name}, you are registered for the <strong>${company}</strong> exam.</p>
+            <div style="${sectionStyle}">
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Your Email:</span> ${email}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Your Phone:</span> ${phone}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Supervisor:</span> ${supName} (${supEmail})</p>
+            </div>
+            <a href="${process.env.NEXT_PUBLIC_BASE_URL || '#'}" style="${btnStyle}">Start Your Exam Now</a>
           </div>`,
       });
     }
 
-    // ✅ FIXED: Added 'await' to ensure Supervisor alert is sent in production
+    // 3. SUPERVISOR EMAIL (Full Student Details)
     if (supEmail) {
       await transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
@@ -79,9 +94,15 @@ export async function sendRegistrationEmails(formData: FormData) {
         subject: `📢 Student Registered: ${name}`,
         html: `
           <div style="${containerStyle}">
-            <h2 style="color:#ca8a04">Student Alert</h2>
-            <p>Hello ${supName},</p>
-            <p>Your student <strong>${name}</strong> (${email}) has registered for <strong>${company}</strong>.</p>
+            <h2 style="color: #ca8a04; margin-bottom: 20px;">Supervisor Notification</h2>
+            <p>Hello ${supName}, your student has registered for an exam.</p>
+            <div style="${sectionStyle}">
+              <h3 style="margin-top: 0; font-size: 16px;">Student Details:</h3>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Full Name:</span> ${name}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Email:</span> ${email}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Phone:</span> ${phone}</p>
+              <p style="margin: 5px 0;"><span style="${labelStyle}">Company:</span> ${company}</p>
+            </div>
           </div>`,
       });
     }
@@ -109,17 +130,11 @@ export async function verifyAndStartExam(formData: FormData) {
     if (!accessRecord) return { success: false, message: 'Invalid Access Code.' };
     
     if (accessRecord.status === 'COMPLETED') {
-        return { 
-            success: false, 
-            message: '⚠️ This code has already been used. You cannot attempt the exam again.' 
-        };
+        return { success: false, message: '⚠️ This code has already been used.' };
     }
 
     if (accessRecord.status === 'STARTED') {
-        return { 
-            success: false, 
-            message: '⚠️ This code is currently active or has been used. You cannot restart the exam.' 
-        };
+        return { success: false, message: '⚠️ This code is currently active.' };
     }
 
     if (accessRecord.companyName?.trim().toLowerCase() !== inputCompany?.trim().toLowerCase()) {
@@ -237,7 +252,7 @@ export async function getExamResult(accessCode: string) {
     const studentAnswers = (record.answers as Record<string, number>) || {}; 
     const totalMaxMarks = questions.reduce((sum, q) => sum + q.marks, 0);
     const score = record.score || 0;
-    const isPass = score >= (totalMaxMarks * 0.5); // 50% Pass
+    const isPass = score >= (totalMaxMarks * 0.5); 
 
     const breakdown = questions.map((q, index) => {
         const userAnswer = studentAnswers[q.id];
@@ -259,10 +274,6 @@ export async function getExamResult(accessCode: string) {
         };
     });
 
-    const correctCount = breakdown.filter(b => b.status === 'correct').length;
-    const wrongCount = breakdown.filter(b => b.status === 'wrong').length;
-    const skippedCount = breakdown.filter(b => b.status === 'skipped').length;
-
     return {
       success: true,
       data: {
@@ -275,16 +286,14 @@ export async function getExamResult(accessCode: string) {
         score,
         totalQuestions: totalMaxMarks,
         questionCount: questions.length, 
-        correctAnswers: correctCount,
-        wrongAnswers: wrongCount,
-        skippedAnswers: skippedCount,
+        correctAnswers: breakdown.filter(b => b.status === 'correct').length,
+        wrongAnswers: breakdown.filter(b => b.status === 'wrong').length,
+        skippedAnswers: breakdown.filter(b => b.status === 'skipped').length,
         status: isPass ? 'Pass' : 'Fail',
         breakdown: breakdown
       }
     };
-  } catch (e) { 
-      return { success: false }; 
-  }
+  } catch (e) { return { success: false }; }
 }
 
 // --- 7. SEND REPORT EMAIL ---
@@ -313,16 +322,14 @@ export async function sendReportEmail(accessCode: string) {
             phone: record.studentPhone || 'N/A',
             company: record.companyName || 'N/A'
         },
-        supervisor: { 
-            name: safeSupervisorName
-        },
+        supervisor: { name: safeSupervisorName },
         exam: { 
             title: record.exam.title,
             date: record.submittedAt ? new Date(record.submittedAt).toLocaleDateString() : new Date().toLocaleDateString(),
             id: record.accessCode
         },
         result: {
-            score: score,
+            score,
             totalMarks: totalMaxMarks,
             percentage: Math.round((score / totalMaxMarks) * 100),
             status: isPass ? 'PASS' : 'FAIL',
@@ -335,27 +342,15 @@ export async function sendReportEmail(accessCode: string) {
         }
     };
 
-    // 1. Generate PDF Stream
-    const pdfStream = await renderToStream(
-        React.createElement(ExamReportPDF, pdfData) as any
-    );
-
-    // 2. Convert to Buffer (Safe for multiple sends)
+    const pdfStream = await renderToStream(React.createElement(ExamReportPDF, pdfData as any));
     const pdfBuffer = await streamToBuffer(pdfStream);
-
     const transporter = createTransporter();
     
-    // 3. Define Recipients
-    const recipients = [
-        record.studentEmail, 
-        record.supervisorEmail, 
-        process.env.ADMIN_EMAIL
-    ].filter((e): e is string => !!e && e.length > 0);
+    const recipients = [record.studentEmail, record.supervisorEmail, process.env.ADMIN_EMAIL]
+      .filter((e): e is string => !!e && e.length > 0);
 
-    // 4. Send Sequentially to prevent corruption
     if (recipients.length > 0) {
         for (const email of recipients) {
-            // ✅ FIXED: Added 'await' to loop to ensure every recipient gets the report
             await transporter.sendMail({
                 from: `"Exam Portal" <${process.env.SMTP_USER}>`,
                 to: email,
@@ -365,28 +360,20 @@ export async function sendReportEmail(accessCode: string) {
                     <h2 style="color: #2563eb; margin-bottom: 20px;">Exam Result Notification</h2>
                     <p>Hello,</p>
                     <p>The official examination report for <strong>${safeStudentName}</strong> (${record.companyName || 'Company'}) is attached.</p>
-                    
                     <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid ${isPass ? '#22c55e' : '#ef4444'};">
-                        <p style="margin: 0; font-size: 14px; color: #64748b;">Result Status</p>
-                        <p style="margin: 5px 0 0; font-size: 20px; font-weight: bold; color: #0f172a;">${isPass ? 'PASSED' : 'FAILED'}</p>
+                        <p style="margin: 0; font-size: 14px; color: #64748b;">Result Status: <strong>${isPass ? 'PASSED' : 'FAILED'}</strong></p>
                         <p style="margin: 5px 0 0; font-size: 14px; color: #475569;">Score: ${score} / ${totalMaxMarks} (${Math.round((score / totalMaxMarks) * 100)}%)</p>
                     </div>
-
                     <p style="font-size: 12px; color: #94a3b8; margin-top: 30px;">This is an automated message. Please do not reply.</p>
                     </div>
                 `,
-                attachments: [
-                    {
-                        filename: `ExamReport_${safeStudentName.replace(/\s+/g, '_')}.pdf`,
-                        content: pdfBuffer,
-                    }
-                ]
+                attachments: [{
+                    filename: `ExamReport_${safeStudentName.replace(/\s+/g, '_')}.pdf`,
+                    content: pdfBuffer,
+                }]
             });
         }
     }
-
     return { success: true };
-  } catch (e) {
-    return { success: false };
-  }
+  } catch (e) { return { success: false }; }
 }

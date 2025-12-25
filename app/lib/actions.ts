@@ -6,7 +6,7 @@ import { prisma } from '@/app/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { getTranslation } from '@/app/lib/translator'; 
 
-// Helper: Generate simple random string
+// Helper: Generate simple random string for Access IDs
 function generateAccessCode(length = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
   let result = '';
@@ -27,45 +27,35 @@ export async function authenticate(
       redirectTo: '/admin/dashboard', 
     })
   } catch (error) {
-    if ((error as Error).message.includes('NEXT_REDIRECT')) {
-        throw error;
-    }
+    if ((error as Error).message.includes('NEXT_REDIRECT')) throw error;
     if (error instanceof AuthError) {
       switch (error.type) {
-        case 'CredentialsSignin':
-          return 'Invalid credentials.'
-        default:
-          return 'Something went wrong.'
+        case 'CredentialsSignin': return 'Invalid credentials.';
+        default: return 'Something went wrong.';
       }
     }
-    throw error
+    throw error;
   }
 }
 
-// --- 2. CREATE EXAM ACTION (SECURED) ---
+// --- 2. CREATE EXAM ACTION ---
 export async function createExam(prevState: any, formData: FormData) {
   try {
     const session = await auth();
-    if (!session?.user?.email) {
-      return { message: 'Unauthorized: You must be logged in.' };
-    }
+    if (!session?.user?.email) return { message: 'Unauthorized' };
 
     const user = await prisma.user.findUnique({
       where: { email: session.user.email },
     });
 
-    if (!user) {
-      return { message: 'Access Denied: Admin account not found. Please contact support.' };
-    }
+    if (!user) return { message: 'Admin account not found.' };
 
     const title = formData.get('title') as string;
     const duration = parseInt(formData.get('duration') as string) || 30;
     const language = formData.get('language') as string || 'English';
     const isActive = formData.get('isActive') === 'on'; 
 
-    if (!title) {
-      return { message: 'Please enter a Form Name.' };
-    }
+    if (!title) return { message: 'Please enter a Form Name.' };
 
     const newExam = await prisma.exam.create({
       data: {
@@ -79,35 +69,27 @@ export async function createExam(prevState: any, formData: FormData) {
 
     revalidatePath('/admin/dashboard');
     return { message: 'Success', examId: newExam.id };
-
-  } catch (error) {
-    return { message: 'Database Error: Failed to create form.' };
-  }
+  } catch (error) { return { message: 'Database Error' }; }
 }
 
 // --- 3. DELETE EXAM ACTION ---
 export async function deleteExam(examId: string) {
   try {
-    await prisma.question.deleteMany({ where: { examId: examId } });
+    await prisma.question.deleteMany({ where: { examId } });
     await prisma.exam.delete({ where: { id: examId } });
     revalidatePath('/admin/dashboard');
     return { message: 'Deleted' };
-  } catch (error) {
-    return { message: 'Failed to delete' };
-  }
+  } catch (error) { return { message: 'Failed' }; }
 }
 
 // --- 4. FETCH QUESTIONS ---
 export async function getExamQuestions(examId: string) {
   try {
-    const questions = await prisma.question.findMany({
+    return await prisma.question.findMany({
       where: { examId },
       orderBy: { id: 'asc' }
     });
-    return questions;
-  } catch (error) {
-    return [];
-  }
+  } catch (error) { return []; }
 }
 
 // --- 5. CREATE QUESTION ACTION ---
@@ -116,7 +98,6 @@ export async function createQuestion(examId: string, prevState: any, formData: F
     const text = formData.get('question') as string;
     const marks = parseInt(formData.get('marks') as string) || 1;
     const correctOptionIndex = parseInt(formData.get('correctOption') as string); 
-
     const options = [
       formData.get('option0') as string,
       formData.get('option1') as string,
@@ -124,25 +105,13 @@ export async function createQuestion(examId: string, prevState: any, formData: F
       formData.get('option3') as string,
     ];
 
-    if (!text) return { message: 'Question text is required.' };
-    if (isNaN(correctOptionIndex)) return { message: 'Please select a correct answer.' };
-
     const newQuestion = await prisma.question.create({
-      data: {
-        text,
-        marks,
-        correctOption: correctOptionIndex,
-        options, 
-        examId,
-      },
+      data: { text, marks, correctOption: correctOptionIndex, options, examId },
     });
 
     revalidatePath('/admin/dashboard');
     return { message: 'Success', question: newQuestion }; 
-
-  } catch (error) {
-    return { message: 'Failed to add question.' };
-  }
+  } catch (error) { return { message: 'Failed' }; }
 }
 
 // --- 6. DELETE QUESTION ACTION ---
@@ -151,9 +120,7 @@ export async function deleteQuestion(questionId: string, examId: string) {
     await prisma.question.delete({ where: { id: questionId } });
     revalidatePath('/admin/dashboard');
     return { message: 'Success' };
-  } catch (error) {
-    return { message: 'Failed' };
-  }
+  } catch (error) { return { message: 'Failed' }; }
 }
 
 // --- 7. LOGOUT ACTION ---
@@ -167,7 +134,6 @@ export async function updateQuestion(questionId: string, examId: string, prevSta
     const text = formData.get('question') as string;
     const marks = parseInt(formData.get('marks') as string) || 1;
     const correctOptionIndex = parseInt(formData.get('correctOption') as string); 
-
     const options = [
       formData.get('option0') as string,
       formData.get('option1') as string,
@@ -175,88 +141,45 @@ export async function updateQuestion(questionId: string, examId: string, prevSta
       formData.get('option3') as string,
     ];
 
-    if (!text) return { message: 'Question text is required.' };
-    if (isNaN(correctOptionIndex)) return { message: 'Please select a correct answer.' };
-
     const updatedQuestion = await prisma.question.update({
       where: { id: questionId },
-      data: {
-        text,
-        marks,
-        correctOption: correctOptionIndex,
-        options,
-      },
+      data: { text, marks, correctOption: correctOptionIndex, options },
     });
 
     revalidatePath('/admin/dashboard');
     return { message: 'Success', question: updatedQuestion };
-
-  } catch (error) {
-    return { message: 'Failed to update question.' };
-  }
+  } catch (error) { return { message: 'Failed' }; }
 }
 
 // --- 9. UPDATE EXAM ACTION ---
 export async function updateExam(examId: string, prevState: any, formData: FormData) {
   try {
-    const session = await auth();
-    if (!session?.user?.email) {
-      return { message: 'Unauthorized' };
-    }
-
     const title = formData.get('title') as string;
     const duration = parseInt(formData.get('duration') as string) || 30;
     const language = formData.get('language') as string || 'English';
     const isActive = formData.get('isActive') === 'on'; 
 
-    if (!title) {
-      return { message: 'Form Name is required.' };
-    }
-
-    const updatedExam = await prisma.exam.update({
+    await prisma.exam.update({
       where: { id: examId },
-      data: {
-        title,
-        durationMin: duration,
-        language,
-        isActive,
-      },
+      data: { title, durationMin: duration, language, isActive },
     });
 
     revalidatePath('/admin/dashboard');
-    return { message: 'Success', examId: updatedExam.id };
-
-  } catch (error) {
-    return { message: 'Failed to update form.' };
-  }
+    return { message: 'Success', examId };
+  } catch (error) { return { message: 'Failed' }; }
 }
 
-// --- 10. FETCH DATA FOR ACCESS DASHBOARD (Grouped by Batch) ---
+// --- 10. FETCH DATA FOR ACCESS DASHBOARD ---
 export async function getExamAccessDashboard() {
   try {
-    const session = await auth();
-    if (!session?.user?.email) return { batches: [], stats: { companies: 0, activeCodes: 0 } };
-
-    // 1. Get total count of active codes
-    const activeCodesCount = await prisma.examAccess.count({
-      where: { status: 'ACTIVE' }
-    });
-
-    // 2. Group by Batch ID to get company stats
+    const activeCodesCount = await prisma.examAccess.count({ where: { status: 'ACTIVE' } });
     const groupedBatches = await prisma.examAccess.groupBy({
       by: ['batchId', 'companyName', 'createdAt'],
-      _count: {
-        accessCode: true 
-      },
-      where: {
-        batchId: { not: null }
-      },
-      orderBy: {
-        createdAt: 'desc'
-      }
+      _count: { accessCode: true },
+      where: { batchId: { not: null } },
+      orderBy: { createdAt: 'desc' }
     });
 
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const batches = groupedBatches.map((b: any) => ({
       batchId: b.batchId as string,
       companyName: b.companyName,
@@ -264,74 +187,46 @@ export async function getExamAccessDashboard() {
       count: b._count.accessCode
     }));
 
-    return {
-      batches: batches,
-      stats: {
-        companies: batches.length, 
-        activeCodes: activeCodesCount
-      }
-    };
-  } catch (error) {
-    return { batches: [], stats: { companies: 0, activeCodes: 0 } };
-  }
+    return { batches, stats: { companies: batches.length, activeCodes: activeCodesCount } };
+  } catch (error) { return { batches: [], stats: { companies: 0, activeCodes: 0 } }; }
 }
 
-// --- 11. FETCH CODES FOR A SPECIFIC BATCH (For Download) ---
+// --- 11. FETCH CODES FOR DOWNLOAD ---
 export async function getBatchCodesForDownload(batchId: string) {
   try {
-    const codes = await prisma.examAccess.findMany({
-      where: { batchId: batchId },
-      select: {
-        accessCode: true,
-        companyName: true,
-        status: true,
-        studentName: true 
-      }
+    return await prisma.examAccess.findMany({
+      where: { batchId },
+      select: { accessCode: true, companyName: true, status: true, studentName: true }
     });
-    return codes;
-  } catch (error) {
-    return [];
-  }
+  } catch (error) { return []; }
 }
 
-// --- 12. BULK GENERATE CODES (No Exam, Custom Quantity) ---
+// --- 12. BULK GENERATE CODES ---
 export async function generateBulkCodes(prevState: any, formData: FormData) {
   try {
-    const session = await auth();
-    if (!session) return { message: 'Unauthorized' };
-
     const companyName = formData.get('companyName') as string;
     const quantity = parseInt(formData.get('amount') as string) || 100;
-
-    if (!companyName) return { message: 'Company Name is required.' };
-
     const prefix = companyName.replace(/\s/g, '').substring(0, 3).toUpperCase();
     const batchId = crypto.randomUUID(); 
     const data = [];
     
     for (let i = 0; i < quantity; i++) {
       const num = Math.floor(100000 + Math.random() * 900000);
-      const code = `${prefix}${num}`; 
-      
       data.push({
         companyName,
-        accessCode: code,
-        batchId: batchId,
+        accessCode: `${prefix}${num}`,
+        batchId,
         status: 'ACTIVE',
-        examId: null, // ✅ No exam assigned
+        examId: null,
         studentName: null, 
         studentEmail: null
       });
     }
 
     await prisma.examAccess.createMany({ data, skipDuplicates: true });
-    
     revalidatePath('/admin/dashboard');
     return { message: 'Success' };
-
-  } catch (error) {
-    return { message: 'Failed to generate codes.' };
-  }
+  } catch (error) { return { message: 'Failed' }; }
 }
 
 // --- 13. RESET ACCESS CODE ---
@@ -340,197 +235,123 @@ export async function resetAccessCode(accessId: string) {
       const newCode = generateAccessCode();
       await prisma.examAccess.update({
         where: { id: accessId },
-        data: {
-            accessCode: newCode,
-            status: 'ACTIVE',
-            sentAt: null, 
-            submittedAt: null 
-        }
+        data: { accessCode: newCode, status: 'ACTIVE', sentAt: null, submittedAt: null }
       });
       revalidatePath('/admin/dashboard');
       return { message: 'Success', newCode };
-    } catch (error) {
-      return { message: 'Failed to reset' };
-    }
+    } catch (error) { return { message: 'Failed' }; }
 }
 
 // --- 14. MARK AS SENT ---
 export async function markAsSent(accessId: string) {
   try {
-    await prisma.examAccess.update({
-      where: { id: accessId },
-      data: { sentAt: new Date() }
-    });
+    await prisma.examAccess.update({ where: { id: accessId }, data: { sentAt: new Date() } });
     revalidatePath('/admin/dashboard');
     return { message: 'Success' };
-  } catch (error) {
-    return { message: 'Failed' };
-  }
+  } catch (error) { return { message: 'Failed' }; }
 }
 
 // --- 15. DELETE BATCH ---
 export async function deleteBatch(batchId: string) {
   try {
-    await prisma.examAccess.deleteMany({
-      where: { batchId: batchId }
-    });
+    await prisma.examAccess.deleteMany({ where: { batchId } });
     revalidatePath('/admin/dashboard');
     return { message: 'Success' };
-  } catch (error) {
-    return { message: 'Failed to delete batch.' };
-  }
+  } catch (error) { return { message: 'Failed' }; }
 }
 
-// --- 16. UPDATE BATCH (Name Only) ---
+// --- 16. UPDATE BATCH ---
 export async function updateBatch(batchId: string, prevState: any, formData: FormData) {
   try {
     const companyName = formData.get('companyName') as string;
-
-    if (!companyName) return { message: 'Company Name required' };
-
-    await prisma.examAccess.updateMany({
-      where: { batchId: batchId },
-      data: {
-        companyName: companyName,
-      }
-    });
-
+    await prisma.examAccess.updateMany({ where: { batchId }, data: { companyName } });
     revalidatePath('/admin/dashboard');
     return { message: 'Success' };
-  } catch (error) {
-    return { message: 'Failed to update batch.' };
-  }
+  } catch (error) { return { message: 'Failed' }; }
 }
 
-// --- 17. GENERATE TRANSLATIONS (UPDATED FOR 7 INDIAN LANGUAGES) ---
-const TARGET_LANGUAGES = [
-  'Hindi', 
-  'Marathi', 
-  'Bengali', 
-  'Tamil', 
-  'Telugu', 
-  'Kannada', 
-  'Malayalam'
-];
-
+// --- 17. GENERATE TRANSLATIONS ---
+const TARGET_LANGUAGES = ['Hindi', 'Marathi', 'Bengali', 'Tamil', 'Telugu', 'Kannada', 'Malayalam'];
 export async function generateExamTranslations(examId: string) {
   try {
-    // 1. Get all questions for this exam
-    const exam = await prisma.exam.findUnique({
-      where: { id: examId },
-      include: { questions: true }
-    });
+    const exam = await prisma.exam.findUnique({ where: { id: examId }, include: { questions: true } });
+    if (!exam) return { success: false, message: "No questions found." };
 
-    if (!exam || exam.questions.length === 0) {
-      return { success: false, message: "No questions found." };
-    }
-
-    // 2. Loop through every language
     for (const lang of TARGET_LANGUAGES) {
-      // 3. Loop through every question
       for (const q of exam.questions) {
-        
-        // Check if already exists to avoid re-doing work
         const existing = await prisma.questionTranslation.findUnique({
             where: { questionId_language: { questionId: q.id, language: lang } }
         });
+        if (existing) continue;
 
-        if (existing) continue; // Skip if done
-
-        // Translate Text
         const transText = await getTranslation(q.text, lang);
-        
-        // Translate Options
-        const transOptions = [];
-        for (const opt of q.options) {
-            const t = await getTranslation(opt, lang);
-            transOptions.push(t || opt); 
-        }
+        const transOptions = await Promise.all(q.options.map(opt => getTranslation(opt, lang)));
 
-        // Save to DB
         if (transText) {
           await prisma.questionTranslation.create({
-            data: {
-              questionId: q.id,
-              language: lang,
-              text: transText,
-              options: transOptions
-            }
+            data: { questionId: q.id, language: lang, text: transText, options: transOptions as string[] }
           });
         }
-        
-        // Small delay to prevent API rate limits
         await new Promise(r => setTimeout(r, 200));
       }
     }
-
-    return { success: true, message: "Translations generated!" };
-
-  } catch (error) {
-    return { success: false, message: "Failed to generate translations." };
-  }
+    return { success: true, message: "Done" };
+  } catch (error) { return { success: false }; }
 }
 
-// --- 18. FETCH ALL EXAMS (For Question Banks View) ---
+// --- 18. FETCH ALL EXAMS ---
 export async function getAllExams() {
   try {
-    const exams = await prisma.exam.findMany({
+    return await prisma.exam.findMany({
       orderBy: { createdAt: 'desc' },
-      select: {
-        id: true,
-        title: true,
-        durationMin: true,
-        createdAt: true,
-        isActive: true,
-        language: true,
-        _count: {
-          select: { questions: true }
-        }
-      }
+      select: { id: true, title: true, durationMin: true, createdAt: true, isActive: true, language: true, _count: { select: { questions: true } } }
     });
-    return exams;
-  } catch (error) {
-    return [];
-  }
+  } catch (error) { return []; }
 }
 
-// --- 19. FETCH EXAM RESPONSES (For Admin Responses View) ---
+// --- 19. FETCH EXAM RESPONSES (MODIFIED FOR DETAILED REPORT PORTAL) ---
 export async function getExamResponses(examId?: string) {
   try {
     const session = await auth();
-    if (!session) return [];
+    
+    // Safety check for TypeScript
+    if (!session?.user?.email) return [];
 
-    const whereClause: any = {
-      studentName: { not: null } // Only show entries with student data
-    };
-
-    if (examId && examId !== 'all') {
-      whereClause.examId = examId;
-    }
+    const whereClause: any = { studentName: { not: null } };
+    if (examId && examId !== 'all') whereClause.examId = examId;
 
     const responses = await prisma.examAccess.findMany({
       where: whereClause,
       include: {
         exam: {
-          select: { title: true }
+          select: { 
+            title: true,
+            questions: { select: { marks: true } } 
+          }
         }
       },
-      orderBy: {
-        submittedAt: 'desc'
-      }
+      orderBy: { submittedAt: 'desc' }
     });
 
-    return responses.map(r => ({
-      id: r.id,
-      studentName: r.studentName,
-      email: r.studentEmail,
-      formTitle: r.exam?.title || 'Unknown Form',
-      status: r.status === 'COMPLETED' ? 'Submitted' : 'Pending',
-      score: r.score,
-      submissionDate: r.submittedAt ? r.submittedAt : r.sentAt 
-    }));
+    return responses.map(r => {
+      // Calculate Total Possible Marks
+      const totalPossible = r.exam?.questions.reduce((sum, q) => sum + q.marks, 0) || 1;
+      const calculatedPercentage = Math.round(((r.score || 0) / totalPossible) * 100);
 
-  } catch (error) {
-    return [];
-  }
+      return {
+        id: r.id,
+        studentName: r.studentName,
+        email: r.studentEmail,
+        studentPhone: (r as any).studentPhone || "N/A", 
+        formTitle: r.exam?.title || 'Unknown Form',
+        status: r.status === 'COMPLETED' ? 'Submitted' : 'Pending',
+        score: r.score || 0,
+        percentage: calculatedPercentage,
+        accessCode: r.accessCode, 
+        submissionDate: r.submittedAt ? r.submittedAt : r.createdAt, 
+        supervisorName: session?.user?.name || "Admin Supervisor",
+        supervisorEmail: session?.user?.email || "admin@aiclex.in"
+      };
+    });
+  } catch (error) { return []; }
 }
