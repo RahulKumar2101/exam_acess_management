@@ -6,7 +6,7 @@ import { prisma } from '@/app/lib/prisma'
 import { revalidatePath } from 'next/cache'
 import { getTranslation } from '@/app/lib/translator'; 
 
-// Helper: Generate simple random string for Access IDs
+// Helper: Generate simple random string for fallback/reset Access IDs
 function generateAccessCode(length = 8): string {
   const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; 
   let result = '';
@@ -17,10 +17,7 @@ function generateAccessCode(length = 8): string {
 }
 
 // --- 1. LOGIN ACTION ---
-export async function authenticate(
-  prevState: string | undefined,
-  formData: FormData,
-) {
+export async function authenticate(prevState: string | undefined, formData: FormData) {
   try {
     await signIn('credentials', {
       ...Object.fromEntries(formData),
@@ -43,11 +40,7 @@ export async function createExam(prevState: any, formData: FormData) {
   try {
     const session = await auth();
     if (!session?.user?.email) return { message: 'Unauthorized' };
-
-    const user = await prisma.user.findUnique({
-      where: { email: session.user.email },
-    });
-
+    const user = await prisma.user.findUnique({ where: { email: session.user.email } });
     if (!user) return { message: 'Admin account not found.' };
 
     const title = formData.get('title') as string;
@@ -58,13 +51,7 @@ export async function createExam(prevState: any, formData: FormData) {
     if (!title) return { message: 'Please enter a Form Name.' };
 
     const newExam = await prisma.exam.create({
-      data: {
-        title,
-        durationMin: duration,
-        language,
-        isActive,
-        creatorId: user.id,
-      },
+      data: { title, durationMin: duration, language, isActive, creatorId: user.id },
     });
 
     revalidatePath('/admin/dashboard');
@@ -85,10 +72,7 @@ export async function deleteExam(examId: string) {
 // --- 4. FETCH QUESTIONS ---
 export async function getExamQuestions(examId: string) {
   try {
-    return await prisma.question.findMany({
-      where: { examId },
-      orderBy: { id: 'asc' }
-    });
+    return await prisma.question.findMany({ where: { examId }, orderBy: { id: 'asc' } });
   } catch (error) { return []; }
 }
 
@@ -169,25 +153,36 @@ export async function updateExam(examId: string, prevState: any, formData: FormD
   } catch (error) { return { message: 'Failed' }; }
 }
 
-// --- 10. FETCH DATA FOR ACCESS DASHBOARD ---
+// --- 10. FETCH DATA FOR ACCESS DASHBOARD (MODIFIED FOR PREFIX DISPLAY) ---
 export async function getExamAccessDashboard() {
   try {
     const activeCodesCount = await prisma.examAccess.count({ where: { status: 'ACTIVE' } });
-    const groupedBatches = await prisma.examAccess.groupBy({
-      by: ['batchId', 'companyName', 'createdAt'],
-      _count: { accessCode: true },
+    
+    const rawBatches = await prisma.examAccess.findMany({
       where: { batchId: { not: null } },
+      select: { batchId: true, companyName: true, createdAt: true, accessCode: true },
       orderBy: { createdAt: 'desc' }
     });
 
-    const batches = groupedBatches.map((b: any) => ({
-      batchId: b.batchId as string,
-      companyName: b.companyName,
-      createdAt: b.createdAt,
-      count: b._count.accessCode
-    }));
+    const grouped: Record<string, any> = {};
+    rawBatches.forEach(item => {
+      const bId = item.batchId!;
+      if (!grouped[bId]) {
+        grouped[bId] = {
+          batchId: bId,
+          companyName: item.companyName,
+          createdAt: item.createdAt,
+          count: 0,
+          prefix: item.accessCode.substring(0, 3).toUpperCase() 
+        };
+      }
+      grouped[bId].count += 1;
+    });
 
-    return { batches, stats: { companies: batches.length, activeCodes: activeCodesCount } };
+    return { 
+      batches: Object.values(grouped), 
+      stats: { companies: Object.keys(grouped).length, activeCodes: activeCodesCount } 
+    };
   } catch (error) { return { batches: [], stats: { companies: 0, activeCodes: 0 } }; }
 }
 
@@ -201,28 +196,43 @@ export async function getBatchCodesForDownload(batchId: string) {
   } catch (error) { return []; }
 }
 
-// --- 12. BULK GENERATE CODES ---
+// --- 12. BULK GENERATE CODES (WITH UNIQUE PREFIX ALERT LOGIC) ---
 export async function generateBulkCodes(prevState: any, formData: FormData) {
   try {
     const companyName = formData.get('companyName') as string;
+    const customPrefix = formData.get('customPrefix') as string;
     const quantity = parseInt(formData.get('amount') as string) || 100;
-    const prefix = companyName.replace(/\s/g, '').substring(0, 3).toUpperCase();
+    
+    const prefix = customPrefix.replace(/\s/g, '').substring(0, 3).toUpperCase();
+
+    // 🛑 STEP 1: Check if this prefix is already used in the database
+    const existingPrefix = await prisma.examAccess.findFirst({
+        where: { accessCode: { startsWith: prefix } }
+    });
+
+    if (existingPrefix) {
+        return { message: 'PrefixExists' }; 
+    }
+
     const batchId = crypto.randomUUID(); 
     const data = [];
     
-    for (let i = 0; i < quantity; i++) {
-      const num = Math.floor(100000 + Math.random() * 900000);
+    // Generate unique 6-digit random numbers for the entire batch
+    const uniqueNumbers = new Set<number>();
+    while(uniqueNumbers.size < quantity) {
+      uniqueNumbers.add(Math.floor(100000 + Math.random() * 900000));
+    }
+
+    for (const num of uniqueNumbers) {
       data.push({
         companyName,
         accessCode: `${prefix}${num}`,
         batchId,
-        status: 'ACTIVE',
-        examId: null,
-        studentName: null, 
-        studentEmail: null
+        status: 'ACTIVE' as const,
       });
     }
 
+    // skipDuplicates: true ensures global uniqueness against existing DB records
     await prisma.examAccess.createMany({ data, skipDuplicates: true });
     revalidatePath('/admin/dashboard');
     return { message: 'Success' };
@@ -309,35 +319,25 @@ export async function getAllExams() {
   } catch (error) { return []; }
 }
 
-// --- 19. FETCH EXAM RESPONSES (MODIFIED FOR DETAILED REPORT PORTAL) ---
+// --- 19. FETCH EXAM RESPONSES ---
 export async function getExamResponses(examId?: string) {
   try {
     const session = await auth();
-    
-    // Safety check for TypeScript
     if (!session?.user?.email) return [];
-
     const whereClause: any = { studentName: { not: null } };
     if (examId && examId !== 'all') whereClause.examId = examId;
 
     const responses = await prisma.examAccess.findMany({
       where: whereClause,
       include: {
-        exam: {
-          select: { 
-            title: true,
-            questions: { select: { marks: true } } 
-          }
-        }
+        exam: { select: { title: true, questions: { select: { marks: true } } } }
       },
       orderBy: { submittedAt: 'desc' }
     });
 
     return responses.map(r => {
-      // Calculate Total Possible Marks
       const totalPossible = r.exam?.questions.reduce((sum, q) => sum + q.marks, 0) || 1;
       const calculatedPercentage = Math.round(((r.score || 0) / totalPossible) * 100);
-
       return {
         id: r.id,
         studentName: r.studentName,

@@ -6,16 +6,19 @@ import { renderToStream } from '@react-pdf/renderer';
 import ExamReportPDF from '@/app/components/ExamReportPDF'; 
 import React from 'react';
 
+// ✅ Robust Transporter Configuration
 const createTransporter = () => {
   return nodemailer.createTransport({
     host: process.env.SMTP_HOST,
     port: parseInt(process.env.SMTP_PORT || '465'),
     secure: true,
     auth: { user: process.env.SMTP_USER, pass: process.env.SMTP_PASS },
+    // Optimize for serverless environments
+    pool: true,
+    maxConnections: 3,
   });
 };
 
-// ✅ FIXED: Type changed to 'any' to resolve "ReadableStream not assignable to Readable" error
 async function streamToBuffer(stream: any): Promise<Buffer> {
   const chunks: Buffer[] = [];
   for await (const chunk of stream) {
@@ -24,7 +27,7 @@ async function streamToBuffer(stream: any): Promise<Buffer> {
   return Buffer.concat(chunks);
 }
 
-// --- 1. SEND REGISTRATION EMAILS (UPDATED WITH FULL DETAILS) ---
+// --- 1. SEND REGISTRATION EMAILS ---
 export async function sendRegistrationEmails(formData: FormData) {
   try {
     const name = (formData.get('fullName') as string) || '';
@@ -36,80 +39,52 @@ export async function sendRegistrationEmails(formData: FormData) {
 
     const transporter = createTransporter();
     
-    // Styles for clean email presentation
     const containerStyle = "font-family: Arial, sans-serif; padding: 25px; border: 1px solid #e5e7eb; border-radius: 12px; max-width: 600px; margin: auto; color: #374151;";
     const headerStyle = "color: #2563eb; border-bottom: 2px solid #f3f4f6; padding-bottom: 10px; margin-bottom: 20px;";
     const sectionStyle = "background-color: #f9fafb; padding: 15px; border-radius: 8px; margin: 10px 0;";
     const labelStyle = "font-weight: bold; color: #111827; display: inline-block; width: 140px;";
     const btnStyle = "display: inline-block; background-color: #2563eb; color: white; padding: 14px 28px; text-decoration: none; border-radius: 8px; font-weight: bold; margin-top: 25px; text-align: center;";
 
-    // 1. ADMIN EMAIL (Full Data)
+    // ✅ FIX: Create an array of promises so they run in parallel
+    const emailPromises = [];
+
+    // 1. Admin Email
     if (process.env.ADMIN_EMAIL) {
-      await transporter.sendMail({
+      emailPromises.push(transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
         to: process.env.ADMIN_EMAIL,
         subject: `🔔 Full Registration Data: ${name}`,
-        html: `
-          <div style="${containerStyle}">
-            <h2 style="${headerStyle}">New Portal Registration</h2>
-            <div style="${sectionStyle}">
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Student Name:</span> ${name}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Student Email:</span> ${email}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Student Phone:</span> ${phone}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Company:</span> ${company}</p>
-            </div>
-            <div style="${sectionStyle}">
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Supervisor:</span> ${supName}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Sup. Email:</span> ${supEmail}</p>
-            </div>
-          </div>`,
-      }).catch(() => {});
+        html: `<div style="${containerStyle}"><h2 style="${headerStyle}">New Portal Registration</h2><div style="${sectionStyle}"><p><span style="${labelStyle}">Student:</span> ${name}</p><p><span style="${labelStyle}">Email:</span> ${email}</p><p><span style="${labelStyle}">Company:</span> ${company}</p></div></div>`,
+      }));
     }
 
-    // 2. STUDENT EMAIL (Details + Link)
+    // 2. Student Email
     if (email) {
-      await transporter.sendMail({
+      emailPromises.push(transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
         to: email,
         subject: `✅ Registration Successful - ${company}`,
-        html: `
-          <div style="${containerStyle}">
-            <h2 style="${headerStyle}">Registration Successful</h2>
-            <p>Hi ${name}, you are registered for the <strong>${company}</strong> exam.</p>
-            <div style="${sectionStyle}">
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Your Email:</span> ${email}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Your Phone:</span> ${phone}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Supervisor:</span> ${supName} (${supEmail})</p>
-            </div>
-            <a href="${process.env.NEXT_PUBLIC_BASE_URL || '#'}" style="${btnStyle}">Start Your Exam Now</a>
-          </div>`,
-      });
+        html: `<div style="${containerStyle}"><h2 style="${headerStyle}">Registration Successful</h2><p>Hi ${name}, you are registered for ${company}.</p><a href="${process.env.NEXT_PUBLIC_BASE_URL || '#'}" style="${btnStyle}">Start Your Exam Now</a></div>`,
+      }));
     }
 
-    // 3. SUPERVISOR EMAIL (Full Student Details)
+    // 3. Supervisor Email
     if (supEmail) {
-      await transporter.sendMail({
+      emailPromises.push(transporter.sendMail({
         from: `"Exam Portal" <${process.env.SMTP_USER}>`,
         to: supEmail,
         subject: `📢 Student Registered: ${name}`,
-        html: `
-          <div style="${containerStyle}">
-            <h2 style="color: #ca8a04; margin-bottom: 20px;">Supervisor Notification</h2>
-            <p>Hello ${supName}, your student has registered for an exam.</p>
-            <div style="${sectionStyle}">
-              <h3 style="margin-top: 0; font-size: 16px;">Student Details:</h3>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Full Name:</span> ${name}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Email:</span> ${email}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Phone:</span> ${phone}</p>
-              <p style="margin: 5px 0;"><span style="${labelStyle}">Company:</span> ${company}</p>
-            </div>
-          </div>`,
-      });
+        html: `<div style="${containerStyle}"><h2 style="color: #ca8a04; margin-bottom: 20px;">Supervisor Notification</h2><p>Hello ${supName}, your student ${name} has registered.</p></div>`,
+      }));
     }
+
+    // ✅ CRITICAL FIX: Use allSettled so one failure doesn't block the others
+    await Promise.allSettled(emailPromises);
 
     return { success: true };
   } catch (error) {
-    return { success: true }; 
+    console.error("REGISTRATION_EMAIL_ERROR:", error);
+    return { success: false, message: "Failed to send emails." }; 
   }
 }
 
@@ -128,17 +103,11 @@ export async function verifyAndStartExam(formData: FormData) {
     const accessRecord = await prisma.examAccess.findUnique({ where: { accessCode: code } });
 
     if (!accessRecord) return { success: false, message: 'Invalid Access Code.' };
-    
-    if (accessRecord.status === 'COMPLETED') {
-        return { success: false, message: '⚠️ This code has already been used.' };
-    }
-
-    if (accessRecord.status === 'STARTED') {
-        return { success: false, message: '⚠️ This code is currently active.' };
-    }
+    if (accessRecord.status === 'COMPLETED') return { success: false, message: '⚠️ Code used.' };
+    if (accessRecord.status === 'STARTED') return { success: false, message: '⚠️ Code active.' };
 
     if (accessRecord.companyName?.trim().toLowerCase() !== inputCompany?.trim().toLowerCase()) {
-      return { success: false, message: `Code does not belong to ${inputCompany}.` };
+      return { success: false, message: `Code doesn't belong to ${inputCompany}.` };
     }
 
     await prisma.examAccess.update({
@@ -146,9 +115,7 @@ export async function verifyAndStartExam(formData: FormData) {
       data: {
         studentName: name, studentEmail: email, studentPhone: phone,
         supervisorName: supName, supervisorEmail: supEmail,
-        examId: examId, 
-        status: 'STARTED', 
-        sentAt: new Date() 
+        examId: examId, status: 'STARTED', sentAt: new Date() 
       }
     });
 
@@ -181,15 +148,7 @@ export async function fetchExamContent(accessCode: string, specificExamId?: stri
 
     const examData = await prisma.exam.findUnique({
         where: { id: examIdToLoad },
-        include: { 
-            questions: {
-                include: {
-                    translations: {
-                        where: { language: targetLang || 'English' } 
-                    }
-                }
-            } 
-        }
+        include: { questions: { include: { translations: { where: { language: targetLang || 'English' } } } } }
     });
 
     if (!examData) return { success: false, message: 'Exam Data Missing' };
@@ -206,11 +165,8 @@ export async function fetchExamContent(accessCode: string, specificExamId?: stri
         };
     });
 
-    const cleanExam = { ...examData, questions: processedQuestions };
-    return { success: true, exam: cleanExam };
-  } catch (error) { 
-      return { success: false, message: 'Load Failed' }; 
-  }
+    return { success: true, exam: { ...examData, questions: processedQuestions } };
+  } catch (error) { return { success: false, message: 'Load Failed' }; }
 }
 
 // --- 5. SUBMIT EXAM ---
@@ -233,9 +189,7 @@ export async function submitExam(accessCode: string, answers: Record<string, num
     });
 
     return { success: true, score };
-  } catch (error) { 
-    return { success: false }; 
-  }
+  } catch (error) { return { success: false }; }
 }
 
 // --- 6. GET RESULT ---
@@ -257,40 +211,24 @@ export async function getExamResult(accessCode: string) {
     const breakdown = questions.map((q, index) => {
         const userAnswer = studentAnswers[q.id];
         let status = 'skipped';
-        
         if (userAnswer !== undefined && userAnswer !== null) {
-            if (Number(userAnswer) === q.correctOption) {
-                status = 'correct';
-            } else {
-                status = 'wrong';
-            }
+            status = Number(userAnswer) === q.correctOption ? 'correct' : 'wrong';
         }
-
-        return {
-            id: q.id,
-            number: index + 1,
-            questionText: q.text,
-            status: status 
-        };
+        return { id: q.id, number: index + 1, questionText: q.text, status };
     });
 
     return {
       success: true,
       data: {
         studentName: record.studentName,
-        studentEmail: record.studentEmail,
-        supervisorName: record.supervisorName,
-        supervisorEmail: record.supervisorEmail,
-        examTitle: record.exam.title,
         submittedAt: record.submittedAt,
         score,
         totalQuestions: totalMaxMarks,
-        questionCount: questions.length, 
         correctAnswers: breakdown.filter(b => b.status === 'correct').length,
         wrongAnswers: breakdown.filter(b => b.status === 'wrong').length,
         skippedAnswers: breakdown.filter(b => b.status === 'skipped').length,
         status: isPass ? 'Pass' : 'Fail',
-        breakdown: breakdown
+        breakdown
       }
     };
   } catch (e) { return { success: false }; }
@@ -304,7 +242,7 @@ export async function sendReportEmail(accessCode: string) {
         include: { exam: { include: { questions: true } } } 
     });
 
-    if (!record || !record.exam) return { success: false };
+    if (!record || !record.exam) return { success: false, message: "Record not found" };
 
     const studentAnswers = (record.answers as Record<string, number>) || {};
     const questions = record.exam.questions;
@@ -313,30 +251,16 @@ export async function sendReportEmail(accessCode: string) {
     const isPass = score >= (totalMaxMarks * 0.5); 
 
     const safeStudentName = record.studentName || 'Student';
-    const safeSupervisorName = record.supervisorName || 'Supervisor';
 
     const pdfData = {
-        student: { 
-            name: safeStudentName,
-            email: record.studentEmail || 'N/A', 
-            phone: record.studentPhone || 'N/A',
-            company: record.companyName || 'N/A'
-        },
-        supervisor: { name: safeSupervisorName },
-        exam: { 
-            title: record.exam.title,
-            date: record.submittedAt ? new Date(record.submittedAt).toLocaleDateString() : new Date().toLocaleDateString(),
-            id: record.accessCode
-        },
+        student: { name: safeStudentName, email: record.studentEmail, phone: record.studentPhone, company: record.companyName },
+        supervisor: { name: record.supervisorName },
+        exam: { title: record.exam.title, date: new Date().toLocaleDateString(), id: record.accessCode },
         result: {
-            score,
-            totalMarks: totalMaxMarks,
-            percentage: Math.round((score / totalMaxMarks) * 100),
+            score, totalMarks: totalMaxMarks, percentage: Math.round((score / totalMaxMarks) * 100),
             status: isPass ? 'PASS' : 'FAIL',
             answers: questions.map((q, i) => ({
-                index: i + 1,
-                questionText: q.text,
-                isCorrect: studentAnswers[q.id] === q.correctOption,
+                index: i + 1, questionText: q.text,
                 status: studentAnswers[q.id] === q.correctOption ? 'Correct' : 'Wrong'
             }))
         }
@@ -346,34 +270,33 @@ export async function sendReportEmail(accessCode: string) {
     const pdfBuffer = await streamToBuffer(pdfStream);
     const transporter = createTransporter();
     
+    // ✅ FIX: Filter out empty emails and join with commas to send ONE email to all
     const recipients = [record.studentEmail, record.supervisorEmail, process.env.ADMIN_EMAIL]
-      .filter((e): e is string => !!e && e.length > 0);
+      .filter((e): e is string => !!e && e.includes('@'));
 
     if (recipients.length > 0) {
-        for (const email of recipients) {
-            await transporter.sendMail({
-                from: `"Exam Portal" <${process.env.SMTP_USER}>`,
-                to: email,
-                subject: `📄 Official Exam Report: ${safeStudentName}`,
-                html: `
-                    <div style="font-family: Arial, sans-serif; padding: 20px; color: #333; max-width: 600px; margin: 0 auto; border: 1px solid #e5e7eb; border-radius: 8px;">
-                    <h2 style="color: #2563eb; margin-bottom: 20px;">Exam Result Notification</h2>
-                    <p>Hello,</p>
-                    <p>The official examination report for <strong>${safeStudentName}</strong> (${record.companyName || 'Company'}) is attached.</p>
-                    <div style="background-color: #f8fafc; padding: 15px; border-radius: 6px; margin: 20px 0; border-left: 4px solid ${isPass ? '#22c55e' : '#ef4444'};">
-                        <p style="margin: 0; font-size: 14px; color: #64748b;">Result Status: <strong>${isPass ? 'PASSED' : 'FAILED'}</strong></p>
-                        <p style="margin: 5px 0 0; font-size: 14px; color: #475569;">Score: ${score} / ${totalMaxMarks} (${Math.round((score / totalMaxMarks) * 100)}%)</p>
-                    </div>
-                    <p style="font-size: 12px; color: #94a3b8; margin-top: 30px;">This is an automated message. Please do not reply.</p>
-                    </div>
-                `,
-                attachments: [{
-                    filename: `ExamReport_${safeStudentName.replace(/\s+/g, '_')}.pdf`,
-                    content: pdfBuffer,
-                }]
-            });
-        }
+        await transporter.sendMail({
+            from: `"Exam Portal" <${process.env.SMTP_USER}>`,
+            to: recipients.join(','), // Sends to everyone in one SMTP transaction
+            subject: `📄 Official Exam Report: ${safeStudentName}`,
+            html: `
+                <div style="font-family: Arial; padding: 20px; color: #333; border: 1px solid #eee; border-radius: 8px;">
+                    <h2 style="color: #2563eb;">Exam Result Notification</h2>
+                    <p>The official report for <strong>${safeStudentName}</strong> is attached.</p>
+                    <p>Status: <strong>${isPass ? 'PASSED' : 'FAILED'}</strong></p>
+                    <p>Score: ${score} / ${totalMaxMarks}</p>
+                </div>`,
+            attachments: [{
+                filename: `ExamReport_${safeStudentName.replace(/\s+/g, '_')}.pdf`,
+                content: pdfBuffer,
+                contentType: 'application/pdf'
+            }]
+        });
     }
+
     return { success: true };
-  } catch (e) { return { success: false }; }
+  } catch (error: any) { 
+    console.error("REPORT_EMAIL_ERROR:", error.message);
+    return { success: false, message: error.message }; 
+  }
 }

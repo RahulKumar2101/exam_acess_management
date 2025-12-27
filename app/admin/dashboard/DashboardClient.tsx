@@ -23,34 +23,15 @@ import { useActionState } from 'react';
 import { useRouter } from 'next/navigation';
 import * as XLSX from 'xlsx'; 
 
-// --- TYPES ---
 type Exam = { id: string; title: string; durationMin: number; createdAt: Date; isActive: boolean; language: string; _count: { questions: number } };
 type Question = { id: string; text: string; options: string[]; correctOption: number; marks: number; };
-
-type BatchEntry = { 
-  batchId: string; 
-  companyName: string | null; 
-  createdAt: Date;
-  count: number;
-};
-
-// ✅ UPDATED TYPE FOR DETAILED RESPONSE DATA
+type BatchEntry = { batchId: string; companyName: string | null; createdAt: Date; count: number; prefix: string; };
 type ResponseData = {
-  id: string;
-  studentName: string | null;
-  email: string | null;
-  studentPhone?: string | null;
-  formTitle: string;
-  status: string;
-  score: number;
-  percentage?: number;
-  accessCode: string; 
-  submissionDate: Date | null;
-  supervisorName?: string | null;
-  supervisorEmail?: string | null;
+  id: string; studentName: string | null; email: string | null; studentPhone?: string | null; formTitle: string;
+  status: string; score: number; percentage?: number; accessCode: string; submissionDate: Date | null;
+  supervisorName?: string | null; supervisorEmail?: string | null;
 };
 
-// --- ICONS ---
 const Icons = {
   Dashboard: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><rect width="7" height="9" x="3" y="3" rx="1" /><rect width="7" height="5" x="14" y="3" rx="1" /><rect width="7" height="9" x="14" y="12" rx="1" /><rect width="7" height="5" x="3" y="16" rx="1" /></svg>,
   Forms: () => <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><path d="M12 18v-6"/><path d="M8 15h8"/></svg>,
@@ -71,7 +52,6 @@ type ActionState = { message: string; examId?: string; question?: Question; code
 
 export default function DashboardClient({ initialStats, recentExams, userEmail }: { initialStats: { exams: number; questions: number }; recentExams: Exam[]; userEmail: string; }) {
   const router = useRouter();
-  
   const [currentView, setCurrentView] = useState<'DASHBOARD' | 'CREATE_FORM' | 'Q_BANKS' | 'ADD_QUESTIONS' | 'EXAM_ACCESS' | 'RESPONSES'>('DASHBOARD');
   const [activeExamId, setActiveExamId] = useState<string | null>(null);
   const [activeExamTitle, setActiveExamTitle] = useState<string>('');
@@ -85,12 +65,9 @@ export default function DashboardClient({ initialStats, recentExams, userEmail }
   const [editingBatch, setEditingBatch] = useState<BatchEntry | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
   const [isTranslating, setIsTranslating] = useState(false);
-
-  // ✅ NEW STATES FOR RESPONSES & REPORT PORTAL
   const [responseList, setResponseList] = useState<ResponseData[]>([]);
   const [selectedExamFilter, setSelectedExamFilter] = useState<string>('all');
   const [selectedReport, setSelectedReport] = useState<ResponseData | null>(null);
-  
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
   const [isPending, startTransition] = useTransition();
 
@@ -230,10 +207,8 @@ export default function DashboardClient({ initialStats, recentExams, userEmail }
     setIsTranslating(false);
   };
 
-  // ✅ RENDER RESPONSES VIEW WITH MODAL
   const renderResponses = () => (
     <div className="space-y-6">
-      {/* --- REPORT PORTAL MODAL --- */}
       {selectedReport && (
         <div className="fixed inset-0 bg-black/60 z-[100] flex items-center justify-center p-4 backdrop-blur-sm overflow-y-auto">
           <div className="bg-white w-full max-w-2xl rounded-3xl shadow-2xl overflow-hidden animate-in fade-in zoom-in duration-200 my-8">
@@ -292,7 +267,6 @@ export default function DashboardClient({ initialStats, recentExams, userEmail }
                <button onClick={handleDownloadResponses} className="flex items-center gap-2 bg-blue-600 text-white px-4 py-2.5 rounded-lg hover:bg-blue-700 text-sm font-medium shadow-sm transition-all active:scale-95 whitespace-nowrap"><Icons.Download /> Export</button>
             </div>
         </div>
-
         <div className="overflow-x-auto rounded-lg border border-gray-100">
           <table className="w-full text-left text-sm text-gray-600 min-w-[1000px]">
             <thead className="bg-gray-50 text-gray-500 font-semibold uppercase tracking-wider text-xs">
@@ -321,9 +295,7 @@ export default function DashboardClient({ initialStats, recentExams, userEmail }
                     <td className="px-6 py-4 font-medium text-gray-700">{response.formTitle}</td>
                     <td className="px-6 py-4 text-center">
                       <span className={`px-3 py-1 rounded-full text-[10px] font-black uppercase tracking-wider border ${
-                        response.status === 'Submitted' 
-                          ? 'bg-emerald-50 text-emerald-700 border-emerald-100' 
-                          : 'bg-amber-50 text-amber-600 border-amber-100'
+                        response.status === 'Submitted' ? 'bg-emerald-50 text-emerald-700 border-emerald-100' : 'bg-amber-50 text-amber-600 border-amber-100'
                       }`}>
                         {response.status === 'Submitted' ? 'Completed' : 'Pending'}
                       </span>
@@ -477,15 +449,26 @@ export default function DashboardClient({ initialStats, recentExams, userEmail }
               </div>
            )}
            <div className="overflow-x-auto">
-               <table className="w-full text-left text-sm text-gray-600 min-w-[700px] md:min-w-full"> 
+               <table className="w-full text-left text-sm text-gray-600 min-w-[800px] md:min-w-full"> 
                <thead className="bg-gray-50 text-gray-500 font-semibold uppercase tracking-wider text-xs">
-                 <tr><th className="px-6 py-4">Company</th><th className="px-6 py-4">Total Codes</th><th className="px-6 py-4">Created Date</th><th className="px-6 py-4 text-right">Actions</th></tr>
+                 <tr>
+                    <th className="px-6 py-4">Company</th>
+                    <th className="px-6 py-4">Unique ID (Prefix)</th>
+                    <th className="px-6 py-4 text-center">Total Codes</th>
+                    <th className="px-6 py-4">Created Date</th>
+                    <th className="px-6 py-4 text-right">Actions</th>
+                 </tr>
                </thead>
                <tbody className="divide-y divide-gray-100">
                  {batchList.map((batch) => (
                    <tr key={batch.batchId} className="hover:bg-gray-50 transition-colors">
                        <td className="px-6 py-4 font-bold text-gray-900 capitalize">{batch.companyName}</td>
-                       <td className="px-6 py-4"><span className="bg-gray-100 px-2 py-1 rounded text-gray-700 font-bold">{batch.count}</span></td>
+                       <td className="px-6 py-4">
+                          <span className="bg-indigo-600 text-white text-[11px] px-3 py-1 rounded-md font-black tracking-widest shadow-sm">
+                             {batch.prefix}
+                          </span>
+                       </td>
+                       <td className="px-6 py-4 text-center"><span className="bg-gray-100 px-2 py-1 rounded text-gray-700 font-bold">{batch.count}</span></td>
                        <td className="px-6 py-4 text-gray-500">{new Date(batch.createdAt).toLocaleDateString()}</td>
                        <td className="px-6 py-4 text-right flex items-center justify-end gap-2">
                            <button onClick={() => handleEditBatch(batch)} className="text-gray-400 hover:text-blue-600 p-2"><Icons.Edit /></button>
@@ -504,7 +487,6 @@ export default function DashboardClient({ initialStats, recentExams, userEmail }
   return (
     <div className="min-h-screen bg-gray-50 flex font-sans text-gray-900 relative">
       {isMobileMenuOpen && ( <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setIsMobileMenuOpen(false)} /> )}
-
       <aside className={`fixed top-0 left-0 z-50 h-full w-72 bg-white border-r border-gray-200 transform transition-transform duration-300 ${isMobileMenuOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 md:fixed shadow-sm flex flex-col`}>
         <div className="p-8 pb-6 flex justify-between items-center"><h1 className="text-2xl font-extrabold text-blue-600 flex items-center gap-3"><span className="text-3xl">🛡️</span> ExamAdmin</h1><button onClick={() => setIsMobileMenuOpen(false)} className="md:hidden text-gray-500"><Icons.Close /></button></div>
         <nav className="flex-1 px-4 space-y-2 mt-4 overflow-y-auto">
@@ -518,15 +500,12 @@ export default function DashboardClient({ initialStats, recentExams, userEmail }
             <button onClick={() => startTransition(() => logoutAction())} className="w-full flex items-center gap-3 px-4 py-3 text-red-600 hover:bg-red-50 rounded-xl font-semibold transition-all"> <Icons.Logout /> Sign Out </button>
         </div>
       </aside>
-
       <main className="flex-1 md:ml-72 p-4 md:p-12 overflow-hidden w-full flex flex-col">
         <div className="md:hidden flex justify-between items-center mb-6"><button onClick={() => setIsMobileMenuOpen(true)} className="text-gray-700 p-2"><Icons.Menu /></button><h1 className="text-xl font-bold text-gray-900">ExamAdmin</h1><div className="w-8"></div></div>
-
         <header className="flex flex-col md:flex-row justify-between items-start md:items-center mb-10 gap-4">
           <div><h2 className="text-3xl font-extrabold text-gray-900 tracking-tight">{currentView === 'DASHBOARD' ? 'Dashboard' : currentView === 'CREATE_FORM' ? 'Create Form' : currentView === 'Q_BANKS' ? 'Question Banks' : currentView === 'EXAM_ACCESS' ? 'Exam Access' : 'Responses'}</h2><p className="text-gray-500 mt-2 font-medium text-sm">Active Admin: <span className="text-gray-800">{userEmail}</span></p></div>
           {currentView === 'DASHBOARD' && ( <button onClick={handleCreateNewClick} className="w-full md:w-auto bg-blue-600 text-white px-6 py-3 rounded-xl hover:bg-blue-700 shadow-lg font-semibold transition-all hover:scale-105 active:scale-95">+ Create New Form</button> )}
         </header>
-
         {currentView === 'DASHBOARD' && renderDashboard()}
         {currentView === 'CREATE_FORM' && renderCreateForm()}
         {currentView === 'Q_BANKS' && renderQBanks()}
@@ -538,8 +517,6 @@ export default function DashboardClient({ initialStats, recentExams, userEmail }
   );
 }
 
-// --- SUB-COMPONENTS (Styles maintained) ---
-
 function SidebarItem({ active, onClick, icon, label }: { active: boolean, onClick: () => void, icon: React.ReactNode, label: string }) {
   return (
     <button onClick={onClick} className={`w-full flex items-center gap-4 px-5 py-3.5 rounded-xl transition-all duration-200 font-medium text-left cursor-pointer ${active ? 'bg-blue-50 text-blue-700 shadow-sm border border-blue-100' : 'text-gray-500 hover:bg-gray-50 hover:text-gray-900'}`}><span className={active ? 'text-blue-600' : 'text-gray-400'}>{icon}</span> {label}</button>
@@ -550,10 +527,23 @@ function BulkGenerateForm({ onSuccess, onCancel, initialData }: { onSuccess: () 
     const actionFn = initialData?.batchId ? updateBatch.bind(null, initialData.batchId) : generateBulkCodes;
     const [state, dispatch, isPending] = useActionState<ActionState, FormData>(actionFn as any, undefined);
     const formRef = useRef<HTMLFormElement>(null);
-    useEffect(() => { if (state?.message === 'Success') { formRef.current?.reset(); onSuccess(); } }, [state, onSuccess]);
+    
+    useEffect(() => { 
+      if (state?.message === 'Success') { 
+        formRef.current?.reset(); 
+        onSuccess(); 
+      } else if (state?.message === 'PrefixExists') {
+        // 🚨 ALERT THE USER
+        alert("❌ This Prefix is already exists! Please enter a unique 3-word code.");
+      }
+    }, [state, onSuccess]);
+
     return (
       <form ref={formRef} action={dispatch} className="flex flex-col md:flex-row items-end gap-4 w-full">
         <div className="flex-1 w-full"><label className="block text-xs font-bold text-gray-700 mb-1">Company Name</label><input name="companyName" type="text" defaultValue={initialData?.companyName || ''} required className="w-full px-3 py-3 bg-white border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" placeholder="e.g. Tata Consultancy" /></div>
+        {!initialData && ( 
+          <div className="flex-1 w-full"><label className="block text-xs font-bold text-gray-700 mb-1">Unique Prefix (3 Chars)</label><input name="customPrefix" type="text" maxLength={3} required className="w-full px-3 py-3 bg-white border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500 uppercase" placeholder="ABC" /></div> 
+        )}
         {!initialData && ( <div className="w-full md:w-32"><label className="block text-xs font-bold text-gray-700 mb-1">Quantity</label><input name="amount" type="number" defaultValue={100} min={1} max={1000} className="w-full px-3 py-3 bg-white border border-gray-200 rounded-lg outline-none focus:ring-2 focus:ring-blue-500" /></div> )}
         <div className="flex gap-2 w-full md:w-auto mt-2 md:mt-0">{onCancel && ( <button type="button" onClick={onCancel} className="px-4 py-3 bg-gray-100 text-gray-600 rounded-lg font-bold">Cancel</button> )}<button disabled={isPending} className="bg-emerald-600 text-white px-6 py-3 rounded-lg font-bold hover:bg-emerald-700 transition-all flex items-center justify-center h-[48px]">{isPending ? 'Saving...' : 'Save Batch'}</button></div>
       </form>
